@@ -2336,7 +2336,8 @@ find /usr -depth -name $(uname -m)-lfs-linux-gnu\* | xargs rm -rf
 # 编写DHCP配置文件（本次使用该配置文件）
 (lfs chroot) root:/usr/lib# vim /etc/systemd/network/10-eth-dhcp.network
 [Match]
-Name=ens33
+# 匹配所有以e开头的网卡（覆盖eth0, ens33, enp0s3等,也可写成 Name=en* eth*）
+Name=e*
  
 [Network]
 DHCP=ipv4
@@ -2871,6 +2872,7 @@ root@ub24-1:~# poweroff
 
 
 ```
-![image](https://img2024.cnblogs.com/blog/1139005/202605/1139005-20260504110615258-1462060489.png)
-![image](https://img2024.cnblogs.com/blog/1139005/202605/1139005-20260504111825551-1858461897.png)
-![image](https://img2024.cnblogs.com/blog/1139005/202605/1139005-20260504111836920-880299010.png)
+![image](./images/1.png)
+![image](./images/2.png)
+![image](./images/3.png)
+![image](./images/4.png)
