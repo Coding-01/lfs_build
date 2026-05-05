@@ -7,6 +7,7 @@
 
 以下会使用root用户进行操作，使用普通用户执行命令时部分会出问题
 
+文档适用于LFS13.0的systemd版本
 
 ```
 
@@ -76,22 +77,6 @@ root@ub24-1:~$ mkswap /dev/sdb2
 # 启用Swap(这样编译时内存更充裕)
 root@ub24-1:~$ swapon -v /dev/sdb2
  
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 ```
@@ -233,6 +218,13 @@ root@ub24-1:~# echo $LFS
 /mnt/lfs
 root@ub24-1:~# umask
 0022
+
+
+
+# 挂载磁盘
+root@ub24-1:~# blkid /dev/sdb3
+注意: 如果确实是ext4格式但该命令没输出时则需要单独执行blkid命令来手动刷新缓存
+/dev/sdb3: UUID="4469f1c7-6775-489d-b83c-57df7cc185f4" BLOCK_SIZE="4096" TYPE="ext4" PARTUUID="f1e0f1a6-1fe8-4266-9a57-9a1d31170f5b"
 
 
 root@ub24-1:~# lsblk -f /dev/sdb
