@@ -2396,7 +2396,7 @@ EOF
 # 配置Linux控制台             https://linuxfromscratch.org/lfs/view/stable-systemd/chapter09/console.html
 (lfs chroot) root:/usr/lib# echo FONT=Lat2-Terminus16 > /etc/vconsole.conf
 (lfs chroot) root:/usr/lib# cat > /etc/vconsole.conf << "EOF"
-KEYMAP=de-latin1
+KEYMAP=us
 FONT=Lat2-Terminus16
 EOF
 
@@ -2443,9 +2443,18 @@ en_US.utf8
 
 获取 Glibc 支持的所有语言环境列表：
 (lfs chroot) root:/usr/lib# locale -a
+
+# 和官方提供的profile基础上加了一部分东西
 (lfs chroot) root:/usr/lib# cat > /etc/profile << "EOF"
 # Begin /etc/profile
 
+# --- 基础路径配置 ---
+export PATH=/usr/bin:/usr/sbin:/bin:/sbin
+
+# --- 提示符配置  ---
+export PS1='[\u@\h \w]\$ '
+
+# --- 语言环境自动化处理 (保留官方的配置) ---
 for i in $(locale); do
   unset ${i%=*}
 done
@@ -2453,7 +2462,10 @@ done
 if [[ "$TERM" = linux ]]; then
   export LANG=C.UTF-8
 else
-  source /etc/locale.conf
+# 只有文件存在时才加载，防止报错
+  if [ -f /etc/locale.conf ]; then
+    source /etc/locale.conf
+  fi
 
   for i in $(locale); do
     key=${i%=*}
@@ -2461,6 +2473,12 @@ else
       export $key
     fi
   done
+fi
+
+# --- 终端颜色支持 (可选) ---
+if [ "$TERM" != "linux" ]; then
+  alias ls='ls --color=auto'
+  alias grep='grep --color=auto'
 fi
 
 # End /etc/profile
@@ -2689,7 +2707,7 @@ File systems --->
   Pseudo filesystems --->
     [*] Tmpfs virtual memory file system support (former shm fs)         [TMPFS]
     [*]   Tmpfs POSIX Access Control Lists                     [TMPFS_POSIX_ACL]
-
+    [*]   Ext4 POSIX Access Control Lists
 
 # 如果您正在构建64位系统，请启用以下一些附加功能
 Processor type and features --->
@@ -2764,6 +2782,7 @@ EOF
 注意：更建议写成UUID的方式   ---> 本次使用该方式
 (lfs chroot) root:/sources/linux-6.18.10# blkid /dev/sdb3
 /dev/sdb3: UUID="4469f1c7-6775-489d-b83c-57df7cc185f4" BLOCK_SIZE="4096" TYPE="ext4" PARTUUID="f1e0f1a6-1fe8-4266-9a57-9a1d31170f5b"
+注意：上一行末尾的PARTUUID，下一行的grub.cfg中要用
 
 (lfs chroot) root:/sources/linux-6.18.10# cat > /boot/grub/grub.cfg << "EOF"
 # Begin /boot/grub/grub.cfg
@@ -2776,10 +2795,13 @@ set root=(hd0,2)
 set gfxpayload=1024x768x32
 
 menuentry "GNU/Linux, Linux 6.18.10-lfs-13.0-systemd" {
-        linux   /boot/vmlinuz-6.18.10-lfs-13.0-systemd root=UUID=4469f1c7-6775-489d-b83c-57df7cc185f4 ro
+        linux   /boot/vmlinuz-6.18.10-lfs-13.0-systemd root=PARTUUID=f1e0f1a6-1fe8-4266-9a57-9a1d31170f5b ro
 }
 EOF
-
+注：
+标准的LFS内核(通过Linux-6.18.10内核安装章节直接编译出的 bzImage)通常不具备直接解析 root=UUID=... 的能力。这种解析能力通常由 initramfs（初始化内存文件系统）提供
+只有在使用initramfs时内核才能识别root=UUID=...如果你没有制作initramfs，内核会因为看不懂 UUID=... 而报错 unable to mount root fs
+建议改为使用 root=PARTUUID=... 内核对 PARTUUID 的支持通常比 UUID 更底层，无需 initramfs 也有很大机会成功
 
 
 
