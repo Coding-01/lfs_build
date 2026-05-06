@@ -372,6 +372,9 @@ lfs@ub24-1:/mnt/lfs/sources$ echo $PATH
 
 
 # [构建LFS跨工具链和临时工具](https://linuxfromscratch.org/lfs/view/stable-systemd/part3.html)
+
+<font color=red>**可在sources目录下直接执行build_temp_tools.sh脚本来代替下一行的"编译交叉工具链"部分**</font>
+
 ## 编译交叉工具链
 ```shell
 # Binutils-2.46.0 - 第1遍
@@ -388,8 +391,6 @@ lfs@ub24-1:/mnt/lfs/sources/binutils-2.46.0/build$ ../configure --prefix=$LFS/to
 
 lfs@ub24-1:/mnt/lfs/sources/binutils-2.46.0/build$ make -j$(nproc) && make install
 lfs@ub24-1:/mnt/lfs/sources/binutils-2.46.0/build$ cd ../.. && rm -rf binutils-2.46.0
-
-
 
 
 
@@ -558,6 +559,7 @@ lfs@ub24-1:/mnt/lfs/sources/gcc-15.2.0/build$ cd ../.. && rm -rf gcc-15.2.0
 
 
 ## 交叉编译临时工具
+<font color=red>**可在sources目录下直接执行build_temp_tools_ch6.sh脚本来代替下一行的"交叉编译临时工具"部分**</font>
 ```shell
 # M4-1.4.21
 lfs@ub24-1:/mnt/lfs/sources$ tar xvf m4-1.4.21.tar.xz 
