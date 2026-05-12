@@ -1,8 +1,9 @@
 # 前奏
 ```shell
-8u/16G
-80G: Ubuntu24.04.1 LTS (GNU/Linux 6.8.0-51-generic x86_64)
-60G: LFS
+8vCPU
+16G Mem
+80G Disk(SCSI): Ubuntu24.04.1 LTS (GNU/Linux 6.8.0-51-generic x86_64)
+60G Disk(SCSI): LFS
 172.16.186.128/24
 
 
@@ -28,7 +29,6 @@ Binutils / GCC / Libtool： 这些包源码巨大，单核编译会让你等到�
 Linux Kernel（内核）： 内核对并发的支持是完美的，你有多少核就开多少
 
 ```
-
 
 
 
@@ -2839,7 +2839,12 @@ root@ub24-1:~# poweroff
 ![image](images/4.png)
 
 
+# 导出.config
+```shell
+为了方便下次使用，按需把.config保存下来供以后使用
+导出方法请自行查阅
 
+```
 
 
 
