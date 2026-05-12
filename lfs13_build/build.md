@@ -2837,9 +2837,10 @@ root@ub24-1:~# poweroff
  
 
 ```
-![image](https://img2024.cnblogs.com/blog/1139005/202605/1139005-20260513054829428-1421563220.png)
-![image](https://img2024.cnblogs.com/blog/1139005/202605/1139005-20260513054848879-1292073003.png)
-![image](https://img2024.cnblogs.com/blog/1139005/202605/1139005-20260513054930211-56814876.png)
+![image](images/1.png)
+![image](images/2.png)
+![image](images/3.png)
+![image](images/4.png)
 
 
 
