@@ -1,21 +1,22 @@
 
 # 后续
-<font color=red>**该文档是在之前的lfs12版本的基础上做的，如在lfs13版本上执行时出现错误(应该不会出现问题)请自行排查**</font>
+<font color=red>**该文档是基于lfs12文档版本上写的，在lfs13版本上 执行时出现错误(应该不会出现问题)请自行排查**</font>
 
 ## 安装openssh
 ```shell
 现在已经进来了LFS中，即在LFS中操作
 
 # 在LFS中安装libedit
-tar -zxvf libedit-20251016-3.1.tar.gz
-cd libedit-20251016-3.1
-./configure --prefix=/usr && make && make install
-
+[root@lfs ~]# cd /sources 
+[root@lfs /sources]# tar -zxvf libedit-20251016-3.1.tar.gz
+[root@lfs /sources]# cd libedit-20251016-3.1
+[root@lfs /sources/libedit-20251016-3.1]# ./configure --prefix=/usr && make && make install
+[root@lfs /sources/libedit-20251016-3.1]# cd .. && rm -rf libedit-20251016-3.1
 
 # 在lfs中安装openssh
-tar -zxvf openssh-10.1p1.tar.gz
-cd openssh-10.1p1
-./configure --prefix=/usr --sysconfdir=/etc/ssh \
+[root@lfs /sources]# tar -zxvf openssh-10.1p1.tar.gz
+[root@lfs /sources]# cd openssh-10.1p1
+[root@lfs /sources/openssh-10.1p1]# ./configure --prefix=/usr --sysconfdir=/etc/ssh \
 --with-md5-passwords --with-privsep-path=/var/lib/sshd \
 --with-default-path=/usr/bin --with-libedit --with-ssl-dir=/usr
 关键点提醒：
@@ -24,10 +25,12 @@ cd openssh-10.1p1
 
 注意：缺少依赖报错：如果在 configure 时报错找不到 zlib 或 openssl，请确认你是否已经安装了这两个包
 
-make && make install
+[root@lfs /sources/openssh-10.1p1]# make && make install
+注意: 此时会报一个所谓的错，这个不影响
+
 
 # 查看ssh版本
--bash-5.2# ssh -V
+[root@lfs /sources/openssh-10.1p1]# ssh -V
 OpenSSH_10.1P1, OpenSSL 3.4.1 11 Feb 2025
 
 
@@ -45,8 +48,8 @@ Description=OpenSSH Daemon
 After=network.target
 
 [Service]
-Type=forking
-ExecStart=/usr/sbin/sshd
+Type=simple
+ExecStart=/usr/sbin/sshd -D
 ExecReload=/bin/kill -HUP $MAINPID
 KillMode=process
 Restart=on-failure
@@ -64,9 +67,16 @@ PermitRootLogin yes
 systemctl daemon-reload
 systemctl enable sshd && systemctl start sshd
 
+如启动时报错则需要手动测试
+/usr/sbin/sshd -t
+
+生成主机密钥（必须做）
+在 Chroot 或 LFS 系统内执行：
+ssh-keygen -A
+
 
 ```
-![image](https://github.com/Coding-01/LFS12.3-systemd-Build/blob/main/images/7.png)
+![image](./images/5.png)
 
 
 ```shell
@@ -81,23 +91,23 @@ systemctl enable sshd && systemctl start sshd
 SSH 登录：当你通过 SSH 进入时，系统会读取你在 LFS 内部设置的 /etc/profile 或 ~/.bash_profile。如果这些文件里定义的 PATH 只有 /usr/bin 而没有 /usr/sbin，系统就找不到ip命令
 
 验证方法：
-在 SSH 终端里执行：echo $PATH
+在SSH终端里执行：echo $PATH
 你会发现结果里很可能缺少了 /usr/sbin
 
 
 # 修改/添加PATH声明，如果不修改/添加则会出现在宿机上的LFS中和ssh连接进来后执行echo $PATH的结果就会不一样
--bash-5.2# echo "export PATH=/usr/bin:/usr/sbin" | tee /etc/profile
+[root@lfs ~]# echo "export PATH=/usr/bin:/usr/sbin" | tee /etc/profile
 export PATH=/usr/bin:/usr/sbin
 
--bash-5.2# source /etc/profile
+[root@lfs ~]# source /etc/profile
 
 # 查看IP
--bash-5.2# ip a sh ens33
+[root@lfs ~]# ip a sh ens33
 2: ens33: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP group default qlen 1000
     link/ether 00:0c:29:93:90:28 brd ff:ff:ff:ff:ff:ff
     altname enp2s1
     altname enx000c29939028
-    inet 172.16.186.141/24 metric 1024 brd 172.16.186.255 scope global dynamic ens33
+    inet 172.16.186.147/24 metric 1024 brd 172.16.186.255 scope global dynamic ens33
        valid_lft 1613sec preferred_lft 1613sec
     inet6 fe80::20c:29ff:fe93:9028/64 scope link proto kernel_ll 
        valid_lft forever preferred_lft forever
@@ -217,6 +227,436 @@ root@lfs:~$ systemctl restart systemd-networkd
 该项未测试
 
 ```
+
+
+# 从lfs基础环境到BLFS功能增强，最终实现Pacman包管理器移植的硬核全过程
+## BLFS(Beyond Linux From Scratch)环境增强(底层支持)
+```shell
+在移植Pacman之前必须先打通网络(curl)与信任链(CA),这是后续所有下载和校验的根基
+
+1. 网络与底层库 (libpsl & curl)
+# 安装curl (必须)
+需要先安装libpsl(curl的依赖)
+[root@lfs /sources]# tar zxvf libpsl-0.21.5.tar.gz
+[root@lfs /sources]# cd libpsl-0.21.5
+[root@lfs /sources/libpsl-0.21.5]# ./configure --prefix=/usr --disable-static && make -j$(nproc) && make install
+[root@lfs /sources/libpsl-0.21.5]# cd .. && rm -rf libpsl-0.21.5
+
+[root@lfs /sources]# tar -xf curl-8.20.0.tar.gz
+[root@lfs /sources]# cd curl-8.20.0
+[root@lfs /sources/curl-8.20.0]# ./configure --prefix=/usr --disable-static --with-openssl
+[root@lfs /sources/curl-8.20.0]# make -j$(nproc) && make install
+[root@lfs /sources/curl-8.20.0]# cd .. && rm -rf curl-8.20.0
+
+2. 证书与信任链 (CA-Certificates)
+[root@lfs /sources]# tar zxvf make-ca-1.16.1.tar.gz
+[root@lfs /sources]# cd make-ca-1.16.1
+[root@lfs /sources/make-ca-1.16.1]# make install
+[root@lfs /sources/make-ca-1.16.1]# cd ..
+
+# 安装p11-kit (证书分发引擎)
+[root@lfs /sources]# tar xvf p11-kit-0.26.2.tar.xz
+[root@lfs /sources]# cd p11-kit-0.26.2
+[root@lfs /sources/p11-kit-0.26.2]# cd build/
+[root@lfs /sources/p11-kit-0.26.2/build]# meson setup --prefix=/usr --buildtype=release -Dtrust_paths=/etc/pki/anchors 
+[root@lfs /sources/p11-kit-0.26.2/build]# ninja && ninja install
+[root@lfs /sources/p11-kit-0.26.2/build]# ln -sfv /usr/libexec/p11-kit/trust-extract-compat    /usr/bin/update-ca-certificates
+[root@lfs /sources/p11-kit-0.26.2/build]# cd ../.. &&  rm -rf p11-kit-0.26.2
+
+
+
+OpenSSL默认寻找证书的路径可能与 make-ca 生成的不一致，所以需要做一个"严丝合缝"的对接:
+# 确保目录存在
+[root@lfs /sources]# mkdir -pv /etc/ssl/certs
+从其他机器上把ca-certificates.crt发送到上一行创建的目录中
+[其他机器@root ~]# scp /etc/ssl/certs/ca-certificates.crt root@172.16.186.147:/etc/ssl/certs/        # 147是lfs的ip
+
+# 建立OpenSSL默认寻找的软链接
+[root@lfs /sources]# ln -sfv /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/cert.pem
+
+# 自动生成哈希链接（lfs13应该有c_rehash命令，它是openssl的一部分）
+[root@lfs /sources]# c_rehash /etc/ssl/certs
+
+# 仅仅是更新系统信任存储(基于你已经生成的证书数据)
+[root@lfs /sources]# /usr/sbin/make-ca -u -w
+
+# 如果是想彻底重新生成(类似之前的流程)
+[root@lfs /sources]# /usr/sbin/make-ca -g -c certdata.txt
+
+
+```
+
+
+
+
+## pacman核心依赖(GnuPG协议栈)
+```shell
+在(lfs chroot)环境或SSH远程连接中，确保你有基本的编译环境。你需要预先准备好以下源码包(建议在宿主机下载后通过scp拷贝到LFS的/sources目录),我是提前下载好了的:
+libarchive (核心依赖，处理压缩包)
+curl (负责网络下载)
+libgpg-error (底层错误码定义)
+libassuan (IPC 通信库)
+gpgme (主程序接口)
+gpgme (负责软件包签名验证)
+pacman (主程序)
+
+第一步: 编译核心依赖
+# 安装libarchive (必须)
+pacman 使用它来读取 .pkg.tar.zst 格式的包
+[root@lfs ~]# cd /sources/
+[root@lfs /sources]# tar xvf libarchive-3.8.7.tar.xz
+[root@lfs /sources]# cd libarchive-3.8.7
+[root@lfs /sources/libarchive-3.8.7]# ./configure --prefix=/usr --disable-static
+[root@lfs /sources/libarchive-3.8.7]# make -j$(nproc) && make install
+[root@lfs /sources/libarchive-3.8.7]# cd .. && rm -rf libarchive-3.8.7
+
+# 安装gpgme 
+如果你想验证Arch官方包的安全性就需要它
+[root@lfs /sources]# tar zxvf libgpg-error-1.61.tar.gz
+[root@lfs /sources]# cd libgpg-error-1.61
+[root@lfs /sources/libgpg-error-1.61]# ./configure --prefix=/usr --disable-static && make -j$(nproc) && make install
+[root@lfs /sources/libgpg-error-1.61]# cd .. && rm -rf libgpg-error-1.61
+
+
+[root@lfs /sources]# tar jxvf libgcrypt-1.11.0.tar.bz2
+[root@lfs /sources]# cd libgcrypt-1.11.0
+[root@lfs /sources/libgcrypt-1.11.0]# ./configure --prefix=/usr --with-libgpg-error-prefix=/usr && make -j$(nproc) && make install
+[root@lfs /sources/libgcrypt-1.11.0]# cd .. && rm -rf libgcrypt-1.11.0
+
+
+[root@lfs /sources]# tar jxvf libassuan-3.0.2.tar.bz2
+[root@lfs /sources]# cd libassuan-3.0.2
+[root@lfs /sources/libassuan-3.0.2]# ./configure --prefix=/usr --disable-static && make -j$(nproc) && make install
+[root@lfs /sources/libassuan-3.0.2]# cd .. && rm -rf libassuan-3.0.2
+
+[root@lfs /sources]# tar jxvf libksba-1.7.0.tar.bz2
+[root@lfs /sources]# cd libksba-1.7.0
+[root@lfs /sources/libksba-1.7.0]# ./configure --prefix=/usr && make -j$(nproc) && make install
+[root@lfs /sources/libksba-1.7.0]# cd .. && rm -rf libksba-1.7.0
+
+[root@lfs /sources]# tar jxvf npth-1.7.tar.bz2
+[root@lfs /sources]# cd npth-1.7
+[root@lfs /sources/npth-1.7]# ./configure --prefix=/usr && make -j$(nproc) && make install
+[root@lfs /sources/npth-1.7]# cd .. && rm -rf npth-1.7
+
+
+[root@lfs /sources]# tar jxvf gpgme-2.0.1.tar.bz2
+[root@lfs /sources]# cd gpgme-2.0.1
+[root@lfs /sources/gpgme-2.0.1]# ./configure --prefix=/usr --disable-gpg-test && make -j$(nproc) && make install
+[root@lfs /sources/gpgme-2.0.1]# cd .. && rm -rf gpgme-2.0.1
+
+
+[root@lfs /sources]# tar xvf gnupg-w32-2.5.19_20260424.tar.xz
+[root@lfs /sources]# cd gnupg-w32-2.5.19
+[root@lfs /sources/gnupg-w32-2.5.19]# ./configure --prefix=/usr  --sysconfdir=/etc  --enable-all-tests && make -j$(nproc) && make install
+检验
+[root@lfs /sources/gnupg-w32-2.5.19]# gpg --version
+gpg (GnuPG) 2.5.19
+libgcrypt 1.11.0
+Copyright (C) 2025 g10 Code GmbH
+License GNU GPL-3.0-or-later <https://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+
+Home: /root/.gnupg
+Supported algorithms:
+Pubkey: RSA, Kyber, ELG, DSA, ECDH, ECDSA, EDDSA
+Cipher: IDEA, 3DES, CAST5, BLOWFISH, AES, AES192, AES256, TWOFISH,
+        CAMELLIA128, CAMELLIA192, CAMELLIA256
+Hash: SHA1, RIPEMD160, SHA256, SHA384, SHA512, SHA224
+Compression: Uncompressed, ZIP, ZLIB, BZIP2
+
+
+[root@lfs /sources/gnupg-w32-2.5.19]# cd .. && rm -rf gnupg-w32-2.5.19
+
+```
+
+
+
+## 正式移植pacman
+```shell
+获取Arch Linux官方维护的密钥环数据文件
+[root@lfs /sources]# curl -k -O https://mirrors.edge.kernel.org/archlinux/core/os/x86_64/archlinux-keyring-20260420-1-any.pkg.tar.zst
+[root@lfs /sources]# tar --use-compress-program=zstd -xvf archlinux-keyring-20260420-1-any.pkg.tar.zst -C  /
+注意:
+操作会将密钥环文件放入 /usr/share/pacman/keyrings/
+
+pacman现在使用meson进行构建(LFS13默认应该已经带了python/meson)
+[root@lfs /sources]# tar zxvf pacman-v7.1.0.tar.gz
+[root@lfs /sources]# cd pacman-v7.1.0
+[root@lfs /sources/pacman-v7.1.0]# mkdir build && cd build
+配置Meson:
+你需要告诉它配置文件和数据库放在哪里
+[root@lfs /sources/pacman-v7.1.0/build]# meson setup --prefix=/usr \
+--sysconfdir=/etc --localstatedir=/var \
+-Ddoc=disabled -Dcrypto=openssl ..
+编译并安装：
+[root@lfs /sources/pacman-v7.1.0/build]# ninja && ninja install
+
+
+# 配置与激活
+安装完程序后，它还只是个空壳，你需要给它"注入灵魂"
+# 创建必要的路径
+[root@lfs /sources/pacman-v7.1.0/build]# mkdir -p /var/lib/pacman && mkdir -p /var/cache/pacman/pkg
+# 编辑镜像源 
+[root@lfs /sources/pacman-v7.1.0/build]# vim /etc/pacman.conf
+[options]
+SigLevel = Required DatabaseOptional
+LocalFileSigLevel = Optional
+RemoteFileSigLevel = Required
+
+# 核心锁定：防止pacman自动化覆盖你的lfs成果
+IgnorePkg = glibc gcc binutils bash coreutils linux linux-headers systemd openssl openssh
+
+# 添加Arch Linux的软件仓库。在文件末尾添加
+[core]
+Server = https://mirrors.kernel.org/archlinux/$repo/os/x86_64
+[extra]
+Server = https://mirrors.kernel.org/archlinux/$repo/os/x86_64
+注: 由于LFS不是标准的Arch，$arch建议直接写死成x86_64
+
+
+# 初始化密钥对
+[root@lfs /sources/pacman-v7.1.0]# pacman-key --init
+gpg: /etc/pacman.d/gnupg/trustdb.gpg: trustdb created
+gpg: no ultimately trusted keys found
+gpg: starting migration from earlier GnuPG versions
+gpg: porting secret keys from '/etc/pacman.d/gnupg/secring.gpg' to gpg-agent
+gpg: migration succeeded
+==> Generating pacman master key. This may take some time.
+gpg: Generating pacman keyring master key...
+gpg: directory '/etc/pacman.d/gnupg/openpgp-revocs.d' created
+gpg: revocation certificate stored as '/etc/pacman.d/gnupg/openpgp-revocs.d/B840B506A208742EA3080EC0B0BD80115DB13954.rev'
+gpg: Done
+==> Updating trust database...
+gpg: marginals needed: 3  completes needed: 1  trust model: pgp
+gpg: depth: 0  valid:   1  signed:   0  trust: 0-, 0q, 0n, 0m, 0f, 1u
+
+
+[root@lfs /sources/pacman-v7.1.0]# pacman-key --populate archlinux
+==> Appending keys from archlinux.gpg...
+==> Locally signing trusted keys in keyring...
+  -> Locally signed 5 keys.
+==> Importing owner trust values...
+gpg: setting ownertrust to 4
+gpg: setting ownertrust to 4
+gpg: setting ownertrust to 4
+gpg: inserting ownertrust of 4
+gpg: setting ownertrust to 4
+==> Disabling revoked keys in keyring...
+  -> Disabled 38 keys.
+==> Updating trust database...
+gpg: Note: third-party key signatures using the SHA1 algorithm are rejected
+gpg: (use option "--allow-weak-key-signatures" to override)
+gpg: marginals needed: 3  completes needed: 1  trust model: pgp
+gpg: depth: 0  valid:   1  signed:   5  trust: 0-, 0q, 0n, 0m, 0f, 1u
+gpg: depth: 1  valid:   5  signed:  86  trust: 0-, 0q, 0n, 5m, 0f, 0u
+gpg: depth: 2  valid:  74  signed:  18  trust: 74-, 0q, 0n, 0m, 0f, 0u
+gpg: next trustdb check due at 2026-10-21
+
+
+现在pacman就真正具备了验证Arch官方包的能力
+但请务必注意：
+由于LFS的系统结构(比如/lib还是/lib64的链接方式)可能与Arch略有不同，当你第一次尝试pacman -Syu或者安装大型软件(如gcc)时，千万不要直接按Y
+先看依赖: 看看它会不会尝试替换之前的 Glibc 或 Binutils
+
+策略: 建议初期只用pacman安装一些非核心的工具(如htop, neofetch, tree等），核心库依然保持手动源码升级，直到你完全掌握如何配置pacman.conf里的IgnorePkg参数
+
+安装第一个测试包：Neofetch
+在安装之前需要让pacman认识云端的软件库
+1. 同步数据库
+首先让pacman去镜像站下载最新的软件包列表:
+[root@lfs /sources/pacman-v7.1.0]# cd
+[root@lfs ~]# pacman -Sy
+:: Synchronizing package databases...
+ core        126.9 KiB  78.3 KiB/s 00:02 [#################################################] 100%
+ extra         8.2 MiB  2.86 MiB/s 00:03 [#################################################] 100%
+
+
+# 查看lfs13的glibc版本
+[root@lfs /sources]# ldd --version
+ldd (GNU libc) 2.43
+Copyright (C) 2024 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+Written by Roland McGrath and Ulrich Drepper.
+
+# 查看arch的glibc的版本
+[root@lfs /sources]# pacman -Si glibc
+Repository      : core
+Name            : glibc
+Version         : 2.43+r22+g8362e8ce10b2-2
+Description     : GNU C Library
+Architecture    : x86_64
+URL             : https://www.gnu.org/software/libc
+Licenses        : GPL-2.0-or-later  LGPL-2.1-or-later
+Groups          : None
+Provides        : None
+Depends On      : linux-api-headers>=4.10  tzdata  filesystem
+Optional Deps   : gd: for memusagestat
+                  perl: for mtrace
+Conflicts With  : None
+Replaces        : None
+Download Size   : 10.32 MiB
+Installed Size  : 50.35 MiB
+Packager        : Frederik Schwan <freswa@archlinux.org>
+Build Date      : Fri 01 May 2026 08:33:40 AM UTC
+Validated By    : SHA-256 Sum  Signature
+
+注: 
+lfs13核心版本与Arch Linux仓库完全对齐。 这意味着你现在安装任何Arch的软件包，二进制兼容性(ABI)几乎是完美的
+仓库的Glibc是2026年5月1日构建的，你的lfs也是近期构建的，这种"同龄"系统极少出现编译器版本导致的兼容性Bug
+
+
+现在还不能正常安装包，因为glibc、libgcc、libstdc++都是通过lfs手动编译的，Pacman的本地数据库里一片空白，它以为你没装这些东西，所以拒绝安装任何依赖它们的软件，以下是解决方法:
+[root@lfs /sources]# mkdir -p /sources/lfs-core && cd /sources/lfs-core
+
+# 创建一个包含多个"虚拟提供"的PKGINFO,即创建伪装元数据
+[root@lfs /sources/lfs-core]# cat > .PKGINFO << EOF
+pkgname = lfs-core-manager
+pkgver = 1.0-1
+pkgdesc = Meta package to satisfy LFS core dependencies
+url = https://www.linuxfromscratch.org
+builddate = $(date +%s)
+packager = LFS-Builder
+size = 0
+arch = x86_64
+license = GPL
+provides = glibc=2.43
+provides = libgcc=14.2.0
+provides = libstdc++=14.2.0
+provides = ncurses=6.5
+provides = bash=5.2
+EOF
+
+
+# 重新打包，只包含.PKGINFO
+[root@lfs /sources/lfs-core]# tar -cf lfs-core-1.0-1-any.pkg.tar .PKGINFO
+
+# 重新压缩
+[root@lfs /sources/lfs-core]# zstd lfs-core-1.0-1-any.pkg.tar
+
+# 强制安装这个影子包（它不含文件，只改数据库）
+[root@lfs /sources/lfs-core]# pacman -U lfs-core-1.0-1-x86_64.pkg.tar.zst
+loading packages...
+resolving dependencies...
+looking for conflicting packages...
+
+Packages (1) lfs-core-manager-1.0-1
+
+
+:: Proceed with installation? [Y/n] y
+(1/1) checking keys in keyring                                                        [#################################################] 100%
+(1/1) checking package integrity                                                      [#################################################] 100%
+(1/1) loading package files                                                           [#################################################] 100%
+(1/1) checking for file conflicts                                                     [#################################################] 100%
+(1/1) checking available disk space                                                   [#################################################] 100%
+:: Processing package changes...
+(1/1) installing lfs-core-manager                                                     [#################################################] 100%
+
+
+
+[root@lfs /sources/lfs-core]# pacman -S fastfetch
+resolving dependencies...
+looking for conflicting packages...
+
+Packages (2) yyjson-0.12.0-1  fastfetch-2.62.1-1
+
+Total Installed Size:  2.35 MiB
+
+:: Proceed with installation? [Y/n] y
+(2/2) checking keys in keyring                                                        [#################################################] 100%
+(2/2) checking package integrity                                                      [#################################################] 100%
+(2/2) loading package files                                                           [#################################################] 100%
+(2/2) checking for file conflicts                                                     [#################################################] 100%
+(2/2) checking available disk space                                                   [#################################################] 100%
+:: Processing package changes...
+(1/2) installing yyjson                                                               [#################################################] 100%
+(2/2) installing fastfetch                                                            [#################################################] 100%
+Optional dependencies for fastfetch
+    chafa: Image output as ascii art
+    dbus: Bluetooth, Player & Media detection
+    dconf: Needed for values that are only stored in DConf + Fallback for GSettings
+    ddcutil: Brightness detection of external displays
+    glib2: Output for values that are only stored in GSettings
+    hwdata: GPU output
+    imagemagick: Image output using sixel or kitty graphics protocol
+    libdrm: Displays detection
+    libelf: st term font detection and fast path of systemd version detection
+    libglvnd: OpenGL module
+    libpulse: Sound detection
+    libxrandr: Multi monitor support
+    ocl-icd: OpenCL module
+    python: Needed for zsh and fish completions
+    sqlite: Needed for Sqlite integration and Soar packages count
+    vulkan-icd-loader: Vulkan module & fallback for GPU output
+    zlib: Faster image output when using kitty graphics protocol
+
+
+[root@lfs /sources]# fastfetch
+            :@@@@@@@:                    root@lfs
+            @@@@@@@@@-                   --------
+    .:%.    @@@@@@@@@+.       @%         OS: Linux From Scratch 13.0-systemd x86_64
+   *@@@%+:  :@@@@@@@%=: .=%@@@@@@=       Host: VMware Virtual Platform
+  :@@@@@@##@@@@@@@@@%*+%@%+@@@@@@@+      Kernel: Linux 6.18.10
+  @@#####+@@@@@@@%:######=@@@@@@@@@-     Uptime: 3 hours, 46 mins
+ *@%######.@@@@@##########-@@@@@@@@#.    Packages: 3 (pacman)
+ %@-#.@=:##+@@@@-###%@:=###*@#*+=-+#:    Shell: bash 5.3.0
+ @@.#@@*=:#-%%**-##%@@%**####=-          Terminal: /dev/pts/0 10.1p1
+ @@-#@@@@+.-...:=.#%@@@@%####-           CPU: 2 x Intel(R) Core(TM) i7-6700HQ (8) @ 2.59 GHz
+ %@%##*#:.o.....o...-%@+####@+    -:     GPU: VMware Device 0405 (VGA compatible)
+ +@@*#....................+@@@@@@@@+     Memory: 302.39 MiB / 15.61 GiB (2%)
+  @%:....................._:@@@@@@@=.    Swap: 0 B / 6.00 GiB (0%)
+  .=:...............__*-=`.=@@@@@@#=.    Disk (/): 6.67 GiB / 52.84 GiB (13%) - ext4
+   :+:....:==*__*-=`:..==-:#@@@@@%+:     Local IP (eth0): 172.16.186.147/24
+     .--=-:  +..::.....-:    =%@*=:      Locale: en_US.UTF-8
+              :........-
+                .:...--.                                         
+                                                                 
+
+
+如果想让你的lfs13看起来更像一个"真正的发行版",可以尝试安装这些基础工具：
+[root@lfs /sources]# pacman -S vim htop git
+[root@lfs /sources]# pacman -S pciutils usbutils (查看硬件信息)
+
+
+
+# 核心包保护验证
+再次确认/etc/pacman.conf里的IgnorePkg是否生效
+# 模拟安装 glibc，看它是否会因为 IgnorePkg 而跳过
+[root@lfs /sources]# pacman -S glibc
+如果提示 "warning: skipping target: glibc"，说明你的防火墙生效了
+
+
+
+
+
+
+RHCA的深度提醒：后续如何维护？
+A. 保护你的“影子包”
+如果以后你手动升级了lfs的 GCC 或 Glibc（比如从2.43升到2.44），记得同步修改你的 .PKGINFO 里的版本号，并重新执行 pacman -U。否则，当你再次安装新包时，Pacman会因为版本太低而报错
+
+B. 处理 .so 缺失（软链接大法）
+如果运行某个安装好的包（如 htop）提示：
+error while loading shared libraries: libncursesw.so.6: cannot open shared object file
+不要慌，也不要用 pacman 去装库。执行以下操作：
+ls /usr/lib/libncursesw* 查看你 LFS 手动编译的版本
+
+做个软链接：ln -sv /usr/lib/libncursesw.so.6.x /usr/lib/libncursesw.so.6
+
+C. 保持IgnorePkg
+永远不要把 glibc、gcc 等从 /etc/pacman.conf 的 IgnorePkg 里拿掉。它们是你lfs的"主权象征"
+
+
+
+
+
+
+```
+
+
+
+
 
 
 ## 安装docker

@@ -267,13 +267,33 @@ root@ub24-1:~$ cd $LFS/sources/
 root@ub24-1:/mnt/lfs/sources# 
  
 # ================== 这部分不在官方文档中 ================================
-# 需要单独下载的包
+# 安装sshd所需
 root@ub24-1:/mnt/lfs/sources$ wget https://mirrors.aliyun.com/openssh/portable/openssh-10.1p1.tar.gz \
 https://www.thrysoee.dk/editline/libedit-20251016-3.1.tar.gz
- 
+
+# 移植pacman所需
+root@ub24-1:/mnt/lfs/sources$ wget \
+https://curl.se/download/curl-8.20.0.tar.gz \
+https://github.com/rockdaboot/libpsl/releases/download/0.21.5/libpsl-0.21.5.tar.gz \
+https://www.gnupg.org/ftp/gcrypt/libgpg-error/libgpg-error-1.61.tar.gz \
+https://www.gnupg.org/ftp/gcrypt/libassuan/libassuan-3.0.2.tar.bz2 \
+https://www.gnupg.org/ftp/gcrypt/libksba/libksba-1.7.0.tar.bz2 \
+https://www.gnupg.org/ftp/gcrypt/gnupg/gnupg-w32-2.5.19_20260424.tar.xz \
+https://gnupg.org/ftp/gcrypt/npth/npth-1.7.tar.bz2 \
+https://www.gnupg.org/ftp/gcrypt/libgpg-error/libgpg-error-1.61.tar.gz \
+https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.11.0.tar.bz2 \
+https://ftp.gnu.org/gnu/wget/wget2-2.2.1.tar.gz \
+https://libarchive.org/downloads/libarchive-3.8.7.tar.xz \
+https://gnupg.org/ftp/gcrypt/gpgme/gpgme-2.0.1.tar.bz2 \
+https://github.com/lfs-book/make-ca/archive/refs/tags/v1.16.1.tar.gz \
+https://github.com/p11-glue/p11-kit/releases/download/0.26.2/p11-kit-0.26.2.tar.xz \
+https://gitlab.archlinux.org/pacman/pacman/-/archive/v7.1.0/pacman-v7.1.0.tar.gz
+
 注意：
-如果需要创建好的LFS有更多的功能，需要单独下载并安装包，这里就只做备用和测试
+1. make-ca的1.16.1的包有时会下不下来, 无比确保它大小不为0,如果不行就从网页端下载
+2. 如果需要创建好的LFS有更多的功能，需要单独下载并安装包，这里就只做备用和测试
 openssh-10.1p1.tar.gz中的p1代表Portable，这是 Linux 系统专用的版本
+
 # =====================================================================
 
 
