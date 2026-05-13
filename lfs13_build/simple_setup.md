@@ -659,7 +659,112 @@ C. 保持IgnorePkg
 
 
 
+
+# 重新修改内核
+```shell
+root@lfs:~$ cd /sources/linux-6.13.4
+root@lfs:/sources/linux-6.13.4$ make menuconfig
+
+# 开启内存控制 (General setup)
+General setup  ---> [*] Control Group support  ---> [*] Memory controller
+
+# 开启关键网络支持 (Device Drivers -> Network device support)
+<*>     Virtual ethernet pair device                   # 这是容器连接外部世界的"网线"
+<*>     MAC-VLAN support
+
+# 开启网络协议支持 (Networking support -> Networking options)
+搜索BRIDGE：勾选 802.1d Ethernet Bridging (CONFIG_BRIDGE)。这是容器虚拟交换机的核心
+<*> 802.1d Ethernet Bridging
+
+勾选 LLC 和 STP (通常会自动勾选)。
+    <*> ANSI/IEEE 802.2 LLC type 2 Suppor
+    [*] Network packet filtering framework (Netfilter)  ---> <*>   Ethernet Bridge tables (ebtables) support  ---> <*>  ebt: STP filter support
+
+搜索NETFILTER_XT_MATCH_IPVS：勾选相关的IPVS支持（用于集群负载均衡）
+Network packet filtering framework (Netfilter) --> Core Netfilter Configuration --> -*- Netfilter Xtables support (required for ip_tables)
+
+开启存储驱动 (File systems)
+搜索 OVERLAY_FS：
+File systems  ---> <*> Overlay filesystem support                 # 这是 Docker 默认的文件层叠加技术
+
+
+配置CONFIG_BRIDGE_NETFILTER。没有它，Docker 的网络隔离和防火墙规则（iptables）可能会失效
+Networking support -> Networking options -> Network packet filtering framework (Netfilter) -> Advanced netfilter configuration -> Bridged IP/ARP packets filtering
+
+为了区分新旧内核，在 make menuconfig 的 General setup 里的 Local version - append to kernel release 输入 -docker
+
+
+保存退出
+root@lfs:/sources/linux-6.13.4$ make -j$(nproc)
+root@lfs:/sources/linux-6.13.4$ make modules_install
+root@lfs:/sources/linux-6.13.4$ cp -v arch/x86/boot/bzImage   /boot/vmlinuz-6.13.4-lfs-12.3-systemd-docker
+
+
+root@lfs:/sources/linux-6.13.4$ vim /boot/grub/grub.cfg
+....
+  ....
+### 这一段是你的新内核（Docker专用） ###
+menuentry 'GNU/Linux (Docker Kernel)' --class gnu-linux --class gnu --class os {
+        load_video
+        insmod gzio
+        insmod part_gpt
+        insmod ext2
+        set root='hd1,gpt3'
+        search --no-floppy --fs-uuid --set=root a21cd4a8-f0f6-4d13-8c95-be53f4311b7c
+        echo    'Loading Linux 6.13.4-lfs-12.3-systemd-docker ...'
+        # 指向你刚才编译的新内核文件
+        linux   /boot/vmlinuz-6.13.4-lfs-12.3-systemd-docker  root=/dev/sdb3 ro       # 下面一段才是原来的，这里名字换成了vmlinuz-6.13.4-lfs-12.3-systemd-docker
+}
+
+
+### 这一段是你的旧内核（保命用，不要删！） ###
+menuentry 'GNU/Linux (Original)' --class gnu-linux --class gnu --class os {
+        load_video
+        insmod gzio
+        insmod part_gpt
+        insmod ext2
+        set root='hd1,gpt3'
+        search --no-floppy --fs-uuid --set=root a21cd4a8-f0f6-4d13-8c95-be53f4311b7c
+        echo    'Loading Linux 6.13.4-lfs-12.3-systemd ...'
+        linux   /boot/vmlinuz-6.13.4-lfs-12.3-systemd root=/dev/sdb3 ro
+}
+
+别忘了 System.map 和 .config
+为了保证内核运行和后续调试（比如 Docker 报错时查内核符号），建议把对应的映射文件也备份一下：
+root@lfs:/sources/linux-6.13.4$ 
+cp -v System.map  /boot/System.map-6.13.4-lfs-12.3-systemd-docker
+cp -v .config   /boot/config-6.13.4-lfs-12.3-systemd-docker
+
+
+
+root@lfs:/sources/linux-6.13.4$ reboot
+
+```
+![image](https://github.com/Coding-01/LFS12.3-systemd-Build/blob/main/images/6.png)
+
+```shell
+# 重新登录后先不要跑脚本，先做这两件事：
+1、检查内核后缀
+root@lfs:~$ uname -r
+6.13.4-docker                 # 必须显示包含 -docker 字符
+
+2、检查内核是否感知到配置
+root@lfs:~$ ls /proc/config.gz 
+/proc/config.gz               # 如果这个文件存在，说明你成功开启了内核自检
+
+注意：能看到上述2项则说明已经正式跨过了LFS架构师最难的一道坎：内核实时控制
+
+```
+
+
+
+
+
+
+
+
 # 安装docker
+## 安装/配置go环境
 ```shell
 Docker是用Go写的，你的LFS环境现在大概率只有 GCC。你需要先在 LFS 里“套娃”式地安装 Go 语言环境
 静态链接与动态链接： 在 LFS 里跑 Docker，最值钱的技术就是把所有依赖都静态链接进去，生成一个放在任何 Linux 上都能跑的二进制文件
@@ -697,106 +802,10 @@ go version go1.26.2 linux/amd64
 ```
 
 
-# 重新修改内核
-```shell
-root@lfs:~$ cd /sources/linux-6.13.4
-root@lfs:/sources/linux-6.13.4$ make menuconfig
-
-# 开启内存控制 (General setup)
-General setup  ---> [*] Control Group support  ---> [*] Memory controller
-
-# 开启关键网络支持 (Device Drivers -> Network device support)
-<*>     Virtual ethernet pair device                   # 这是容器连接外部世界的"网线"
-<*>     MAC-VLAN support
-
-# 开启网络协议支持 (Networking support -> Networking options)
-搜索BRIDGE：勾选 802.1d Ethernet Bridging (CONFIG_BRIDGE)。这是容器虚拟交换机的核心
-<*> 802.1d Ethernet Bridging
-
-勾选 LLC 和 STP (通常会自动勾选)。
-    <*> ANSI/IEEE 802.2 LLC type 2 Suppor
-    [*] Network packet filtering framework (Netfilter)  ---> <*>   Ethernet Bridge tables (ebtables) support  ---> <*>  ebt: STP filter support
-
-搜索NETFILTER_XT_MATCH_IPVS：勾选相关的IPVS支持（用于集群负载均衡）
-Network packet filtering framework (Netfilter) --> Core Netfilter Configuration --> -*- Netfilter Xtables support (required for ip_tables)
-
-开启存储驱动 (File systems)
-搜索 OVERLAY_FS：
-File systems  ---> <*> Overlay filesystem support                 # 这是 Docker 默认的文件层叠加技术
-
-配置CONFIG_BRIDGE_NETFILTER。没有它，Docker 的网络隔离和防火墙规则（iptables）可能会失效
-Networking support -> Networking options -> Network packet filtering framework (Netfilter) -> Advanced netfilter configuration -> Bridged IP/ARP packets filtering
-
-为了区分新旧内核，在 make menuconfig 的 General setup 里的 Local version - append to kernel release 输入 -docker
-
-
-保存退出
-root@lfs:/sources/linux-6.13.4$ make -j$(nproc)
-root@lfs:/sources/linux-6.13.4$ make modules_install
-root@lfs:/sources/linux-6.13.4$ cp -v arch/x86/boot/bzImage   /boot/vmlinuz-6.13.4-lfs-12.3-systemd-docker
-
-
-root@lfs:/sources/linux-6.13.4$ vim /boot/grub/grub.cfg
-....
-  ....
-### 这一段是你的新内核（Docker专用） ###
-menuentry 'GNU/Linux (Docker Kernel)' --class gnu-linux --class gnu --class os {
-        load_video
-        insmod gzio
-        insmod part_gpt
-        insmod ext2
-        set root='hd1,gpt3'
-        search --no-floppy --fs-uuid --set=root a21cd4a8-f0f6-4d13-8c95-be53f4311b7c
-        echo    'Loading Linux 6.13.4-lfs-12.3-systemd-docker ...'
-        # 指向你刚才编译的新内核文件
-        linux   /boot/vmlinuz-6.13.4-lfs-12.3-systemd-docker  root=/dev/sdb3 ro       # 下面一段才是原来的，这里名字换成了vmlinuz-6.13.4-lfs-12.3-systemd-docker
-}
-
-### 这一段是你的旧内核（保命用，不要删！） ###
-menuentry 'GNU/Linux (Original)' --class gnu-linux --class gnu --class os {
-        load_video
-        insmod gzio
-        insmod part_gpt
-        insmod ext2
-        set root='hd1,gpt3'
-        search --no-floppy --fs-uuid --set=root a21cd4a8-f0f6-4d13-8c95-be53f4311b7c
-        echo    'Loading Linux 6.13.4-lfs-12.3-systemd ...'
-        linux   /boot/vmlinuz-6.13.4-lfs-12.3-systemd root=/dev/sdb3 ro  
-}
 
 
 
-
-别忘了 System.map 和 .config
-为了保证内核运行和后续调试（比如 Docker 报错时查内核符号），建议把对应的映射文件也备份一下：
-root@lfs:/sources/linux-6.13.4$ 
-cp -v System.map  /boot/System.map-6.13.4-lfs-12.3-systemd-docker
-cp -v .config   /boot/config-6.13.4-lfs-12.3-systemd-docker
-
-
-
-root@lfs:/sources/linux-6.13.4$ reboot
-
-```
-![image](https://github.com/Coding-01/LFS12.3-systemd-Build/blob/main/images/6.png)
-
-```shell
-# 重新登录后先不要跑脚本，先做这两件事：
-1、检查内核后缀
-root@lfs:~$ uname -r
-6.13.4-docker                 # 必须显示包含 -docker 字符
-
-2、检查内核是否感知到配置
-root@lfs:~$ ls /proc/config.gz 
-/proc/config.gz               # 如果这个文件存在，说明你成功开启了内核自检
-
-注意：能看到上述2项则说明已经正式跨过了LFS架构师最难的一道坎：内核实时控制
-
-```
-
-
-
-# 安装docker
+## 安装docker
 ```shell
 moby/moby 是Docker的上游开源项目 https://github.com/moby/moby
 
