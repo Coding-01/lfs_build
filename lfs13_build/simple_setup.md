@@ -659,7 +659,7 @@ C. 保持IgnorePkg
 
 
 
-## 安装docker
+# 安装docker
 ```shell
 Docker是用Go写的，你的LFS环境现在大概率只有 GCC。你需要先在 LFS 里“套娃”式地安装 Go 语言环境
 静态链接与动态链接： 在 LFS 里跑 Docker，最值钱的技术就是把所有依赖都静态链接进去，生成一个放在任何 Linux 上都能跑的二进制文件
@@ -697,7 +697,7 @@ go version go1.26.2 linux/amd64
 ```
 
 
-## 重新修改内核
+# 重新修改内核
 ```shell
 root@lfs:~$ cd /sources/linux-6.13.4
 root@lfs:/sources/linux-6.13.4$ make menuconfig
@@ -796,7 +796,7 @@ root@lfs:~$ ls /proc/config.gz
 
 
 
-## 安装docker
+# 安装docker
 ```shell
 moby/moby 是Docker的上游开源项目 https://github.com/moby/moby
 
