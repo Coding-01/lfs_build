@@ -369,7 +369,83 @@ Compression: Uncompressed, ZIP, ZLIB, BZIP2
 
 [root@lfs /sources/gnupg-w32-2.5.19]# cd .. && rm -rf gnupg-w32-2.5.19
 
+
+
+# wget2比旧版的wget复杂得多，它强依赖于gnutls 或 openssl 以及libpsl, 所以到最后安装
+[root@lfs /sources]# tar -xvf wget2-2.2.1.tar.gz
+[root@lfs /sources]# cd wget2-2.2.1
+# lfs规范: 通常建议建立独立的build目录
+[root@lfs /sources/wget2-2.2.1]# mkdir build && cd build
+# 关键：指定安装路径和依赖路径
+[root@lfs /sources/wget2-2.2.1/build]# ../configure --prefix=/usr  --sysconfdir=/etc  --with-openssl  --disable-static
+[root@lfs /sources/wget2-2.2.1/build]# make -j$(nproc) && make install
+[root@lfs /sources/wget2-2.2.1/build]# cd ../.. && rm -rf wget2-2.2.1
+
+
+# 安装pciutils
+[root@lfs /sources]# tar zxvf pciutils-3.15.0.tar.gz
+[root@lfs /sources]# cd pciutils-3.15.0
+[root@lfs /sources/pciutils-3.15.0]# make PREFIX=/usr SHAREDIR=/usr/share/hwdata  SHARED=yes   all
+[root@lfs /sources/pciutils-3.15.0]# make PREFIX=/usr SHAREDIR=/usr/share/hwdata SHARED=yes  install install-lib
+[root@lfs /sources/pciutils-3.15.0]# lspci
+[root@lfs /sources/pciutils-3.15.0]# cd .. && rm -rf pciutils-3.15.0
+[root@lfs /sources]# lspci -nn
+Note: 记下 [8086:7190] 这种数字,因为要这个特定ID定制最适配它的精简系统
+00:00.0 Host bridge [0600]: Intel Corporation 440BX/ZX/DX - 82443BX/ZX/DX Host bridge [8086:7190] (rev 01)
+00:01.0 PCI bridge [0604]: Intel Corporation 440BX/ZX/DX - 82443BX/ZX/DX AGP bridge [8086:7191] (rev 01)
+00:07.0 ISA bridge [0601]: Intel Corporation 82371AB/EB/MB PIIX4 ISA [8086:7110] (rev 08)
+00:07.1 IDE interface [0101]: Intel Corporation 82371AB/EB/MB PIIX4 IDE [8086:7111] (rev 01)
+00:07.3 Bridge [0680]: Intel Corporation 82371AB/EB/MB PIIX4 ACPI [8086:7113] (rev 08)
+00:07.7 System peripheral [0880]: VMware Virtual Machine Communication Interface [15ad:0740] (rev 10)
+00:0f.0 VGA compatible controller [0300]: VMware SVGA II Adapter [15ad:0405]
+00:10.0 SCSI storage controller [0100]: Broadcom / LSI 53c1030 PCI-X Fusion-MPT Dual Ultra320 SCSI [1000:0030] (rev 01)
+00:11.0 PCI bridge [0604]: VMware PCI bridge [15ad:0790] (rev 02)
+00:15.0 PCI bridge [0604]: VMware PCI Express Root Port [15ad:07a0] (rev 01)
+....
+    ....
+00:18.7 PCI bridge [0604]: VMware PCI Express Root Port [15ad:07a0] (rev 01)
+02:00.0 USB controller [0c03]: VMware USB1.1 UHCI Controller [15ad:0774]
+02:01.0 Ethernet controller [0200]: Intel Corporation 82545EM Gigabit Ethernet Controller (Copper) [8086:100f] (rev 01)
+02:02.0 Multimedia audio controller [0401]: Ensoniq ES1371/ES1373 / Creative Labs CT2518 [1274:1371] (rev 02)
+02:03.0 SATA controller [0106]: VMware SATA AHCI controller [15ad:07e0]
+注意：
+比如上3行的网卡驱动，的数字释义:Vendor ID (厂商码): 8086 (Intel)、Device ID (设备码): 100f (82545EM)
+进入你的内核源码目录，执行以下命令:
+grep -r "0x100F" drivers/net/ethernet/intel/
+会看到结果指向了 e1000 驱动相关的代码
+实战：
+如果客户给你一台旧服务器，网卡死活不亮。你运行 lspci -nn 抓到 ID，在源码里搜这个ID在 Linux 6.18 里对应的驱动叫e1000
+你只需要回到 make menuconfig，按下 / 键搜 E1000，把它勾选为 * (Built-in)，编译出的镜像发给客户，网卡瞬间秒亮
+
+
+
+# 安装usbutils
+[root@lfs /sources]# tar jxvf libusb-1.0.29.tar.bz2 
+[root@lfs /sources]# cd libusb-1.0.29
+[root@lfs /sources/libusb-1.0.29]# ./configure --prefix=/usr --disable-static && make -j$(nproc) && make install
+[root@lfs /sources/libusb-1.0.29]# cd .. && rm -rf libusb-1.0.29
+[root@lfs /sources]# tar zxvf v019.tar.gz 
+[root@lfs /sources]# cd usbutils-019/
+[root@lfs /sources/usbutils-019]# meson setup build --prefix=/usr -Ddatadir=/usr/share/hwdata
+[root@lfs /sources/usbutils-019]# ninja -C build && ninja -C build install
+[root@lfs /sources/usbutils-019]# cd .. && rm -rf usbutils-019
+[root@lfs /sources]# lsusb
+Bus 001 Device 001: ID 1d6b:0001 Linux Foundation 1.1 root hub
+Bus 001 Device 002: ID 0e0f:0003 VMware, Inc. Virtual Mouse
+Bus 001 Device 003: ID 0e0f:0002 VMware, Inc. Virtual USB Hub
+
+
+
+
+
 ```
+
+
+
+
+
+
+
 
 
 
@@ -1379,7 +1455,3 @@ Accept-Ranges: bytes
 
 
 
-
-
-
- 

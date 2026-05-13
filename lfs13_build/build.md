@@ -28,7 +28,12 @@ B. 推荐开启-j(提升效率巨大)
 Binutils / GCC / Libtool： 这些包源码巨大，单核编译会让你等到怀疑人生。一定要开启 -j$(nproc)
 Linux Kernel（内核）： 内核对并发的支持是完美的，你有多少核就开多少
 
+
 ```
+
+
+
+
 
 
 
@@ -287,8 +292,10 @@ https://libarchive.org/downloads/libarchive-3.8.7.tar.xz \
 https://gnupg.org/ftp/gcrypt/gpgme/gpgme-2.0.1.tar.bz2 \
 https://github.com/lfs-book/make-ca/archive/refs/tags/v1.16.1.tar.gz \
 https://github.com/p11-glue/p11-kit/releases/download/0.26.2/p11-kit-0.26.2.tar.xz \
-https://gitlab.archlinux.org/pacman/pacman/-/archive/v7.1.0/pacman-v7.1.0.tar.gz
-
+https://gitlab.archlinux.org/pacman/pacman/-/archive/v7.1.0/pacman-v7.1.0.tar.gz \
+https://github.com/pciutils/pciutils/releases/download/v3.15.0/pciutils-3.15.0.tar.gz \
+https://github.com/libusb/libusb/releases/download/v1.0.29/libusb-1.0.29.tar.bz2 \
+https://github.com/gregkh/usbutils/archive/refs/tags/v019.tar.gz
 注意：
 1. make-ca的1.16.1的包有时会下不下来, 无比确保它大小不为0,如果不行就从网页端下载
 2. 如果需要创建好的LFS有更多的功能，需要单独下载并安装包，这里就只做备用和测试
@@ -2715,6 +2722,12 @@ Device Drivers -> -*- SCSI device support
                       <*>   Fusion MPT ScsiHost drivers for SPI 
                       <*>   Fusion MPT ScsiHost drivers for SAS
  
+
+你现在的内核如果是针对虚拟机优化的，换台实体机可能连硬盘都扫不出来,所以需要:
+开启通用驱动：确保开启了 AHCI (SATA)、NVMe、USB 3.0 (xHCI) 以及常见的各种文件系统支持
+显卡驱动：至少开启 Vesa FB 或 EFI FB，否则启动后会黑屏
+
+
  
 (lfs chroot) root:/sources/linux-6.18.10# make -j$(nproc)
 注：核心越多，编译越快。如果只有1核，可能需要等半小时以上；如果是4核或更多，10分钟左右就能搞定
@@ -2868,3 +2881,23 @@ root@ub24-1:~# poweroff
 
 
 
+
+# lfs13阶段性工作总结 
+```shell
+按照上述文档分段格式，我的工作实际上完成了一个从"无中生有"到"工业化管理"的闭环： 
+第一阶段：宿主环境准备与工具链构建 (Toolchain)
+环境隔离：建立了独立的编译分区与 $LFS 环境变量，确保宿主系统不被污染
+交叉编译：从零构建了第一遍（Pass 1）和第二遍（Pass 2）的 Binutils、GCC 和 Glibc，解决了“先有鸡还是先有蛋”的编译器自举问题
+进入 Chroot：成功切换到虚拟根环境，切断了与宿主系统的最后联系，实现了环境纯净化
+
+第二阶段：系统核心组件编译 (System Building)
+基础包编译：手动编译了从 Bash、Coreutils 到 Systemd 等 80 多个核心软件包，并根据 LFS13 标准进行了特定的安全性补丁(Patching)
+内核定制 (Kernel)：手动配置并编译了 Linux 6.x 内核，通过精简驱动实现了极速启动
+系统初始化：配置了网络、主机名、fstab 以及引导程序（GRUB），使系统具备独立引导能力
+
+第三阶段：功能增强与包管理器移植 (BLFS & Pacman), 这一部分在simple_setup.md中    
+信任链构建：解决了复杂的 SSL/CA 证书体系，通过 make-ca 和 p11-kit 实现了 HTTPS 通信
+Pacman 移植：这是文档的灵魂。从源码编译了 GnuPG 协议栈、libarchive 等，将 Arch Linux 的包管理能力注入 LFS
+依赖欺骗 (Shadow Package)：首创（或深度实践）了“影子包”策略，通过伪装元数据解决了 LFS 核心库与 Arch 二进制包的依赖冲突
+
+```
