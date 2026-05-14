@@ -323,6 +323,8 @@ Full text search :
 # 创建虚拟邮件用户组和用户
 groupadd -g 5000 vmail
 useradd -c "Virtual Mail User" -d /srv/mail -g vmail -s /bin/false -u 5000 vmail
+mkdir -p /var/vmail
+chown vmail:vmail /var/vmail
 
 # 创建并授权邮件存储目录
 mkdir -p /srv/mail
@@ -601,6 +603,7 @@ Python 3.14.3
 
 
 ## 安装rspamd4.0.1
+```shell
 Rspamd是基于C/C++和Lua的。它需要Ragel(状态机生成器) 和 ICU(国际化库)
 [root@lfs ~/build_mail]# wget2 -O rspamd.4.0.1.tar.gz https://github.com/rspamd/rspamd/archive/refs/tags/4.0.1.tar.gz
 [root@lfs ~/build_mail]# tar -xvf 4.0.1.tar.gz && cd rspamd-4.0.1
@@ -902,7 +905,7 @@ service auth {
     group = dovecot
   }
 }
-# --- LMTP监听窗口 ---
+# lmtp监听窗口 
 service lmtp {
   unix_listener /var/spool/postfix/private/dovecot-lmtp {
     mode = 0660
@@ -913,19 +916,54 @@ service lmtp {
 
 
 [root@lfs ~/build_mail]# vim /etc/dovecot/conf.d/10-auth.conf
-# 允许 Dovecot 读取系统账号 (UserDB)
-userdb passwd {
-  driver = passwd
-  args = 
+# 2.4.4 强制要求在块内处理变量格式
+auth_username_format = %{user | username}
+
+passdb passwd-file {
+    # 2.4.4 的新参数名，必须叫这个
+    passwd_file_path = /etc/dovecot/users
 }
 
-# 允许 Dovecot 验证系统密码 (PassDB)
-passdb pam {
-  driver = pam
+userdb passwd-file {
+    passwd_file_path = /etc/dovecot/users
 }
 
-# 剥离域名，只取用户名 'test' 去系统里查
-auth_username_format = %n
+
+# 测试语法是否有问题(这里10-auth.conf的格式很严)
+[root@lfs ~/build_mail]# doveconf -n > /dev/null
+注意：无输出为正确
+
+# 定义虚拟用户数据库数据资产层)
+先生成加密密码(比如密码是Flz_3qc123)
+[root@lfs ~/build_mail]# doveadm pw -s BLF-CRYPT -p Flz_3qc123
+{BLF-CRYPT}$2y$05$F9s0JlyUD1MTWGVe1vIfqeKRWLg8f9H0dntjtme1W38HqQ5TEvzv6
+
+# 创建用户文件,分别创建了test和admin用户，2个用户的密码相同，如需使用不同密码需再执行上述doveadm来生成
+[root@lfs ~/build_mail]# cat > /etc/dovecot/users << "EOF"
+test:{BLF-CRYPT}$2y$05$uJjhENnYV6ceO73JdKfC4OFsXTTIXC4xM3UZ7LO9hXAbnc448N/Sa:5000:5000::/var/vmail/test
+admin:{BLF-CRYPT}$2y$05$uJjhENnYV6ceO73JdKfC4OFsXTTIXC4xM3UZ7LO9hXAbnc448N/Sa:5000:5000::/var/vmail/admin
+EOF
+
+
+# 设置权限(非常重要，防止其他普通用户偷看密码文件)
+[root@lfs ~/build_mail]# 
+chown vmail:vmail /etc/dovecot/users
+chmod 600 /etc/dovecot/users
+
+# 确保存储目录存在且权限正确
+mkdir -p /var/vmail/test /var/vmail/admin
+chown -R vmail:vmail /var/vmail
+
+[root@lfs ~/build_mail]# systemctl restart dovecot
+
+
+# 测试test用户
+[root@lfs ~/build_mail]# doveadm user test@localhost
+field	value
+user	test
+uid	5000
+gid	5000
+home	/var/vmail/test
 
 
 
@@ -1002,31 +1040,86 @@ swaks version 20240103.0
 <-  250 2.1.5 Ok
  -> DATA
 <-  354 End data with <CR><LF>.<CR><LF>
- -> Date: Thu, 14 May 2026 08:42:23 +0000
+ -> Date: Thu, 14 May 2026 11:02:01 +0000
  -> To: test@localhost
  -> From: admin@localhost
- -> Subject: test Thu, 14 May 2026 08:42:23 +0000
- -> Message-Id: <20260514084223.415817@localhost>
+ -> Subject: test Thu, 14 May 2026 11:02:01 +0000
+ -> Message-Id: <20260514110201.416966@localhost>
  -> X-Mailer: swaks v20240103.0 jetmore.org/john/code/swaks/
  -> 
  -> This is a test mailing
  -> 
  -> 
  -> .
-<-  250 2.0.0 Ok: queued as 32C661E0238
+<-  250 2.0.0 Ok: queued as 612E61E0238
  -> QUIT
 <-  221 2.0.0 Bye
-=== Connection closed with remote host.
+=== Connection closed with remote host
 
 
-日志中显示
+
+# 日志中显示
 [root@lfs ~]# tail -f /var/log/maillog
-May 14 08:42:23 localhost postfix/smtpd[415818]: connect from localhost[127.0.0.1]
-May 14 08:42:23 localhost postfix/smtpd[415818]: 32C661E0238: client=localhost[127.0.0.1]
-May 14 08:42:23 localhost postfix/cleanup[415822]: 32C661E0238: message-id=<20260514084223.415817@localhost>
-May 14 08:42:23 localhost postfix/smtpd[415818]: disconnect from localhost[127.0.0.1] ehlo=1 mail=1 rcpt=1 data=1 quit=1 commands=5
-May 14 08:42:23 localhost postfix/local[415823]: 32C661E0238: to=<test@localhost>, relay=local, delay=0.18, delays=0.17/0.01/0/0, dsn=2.0.0, status=sent (delivered to mailbox)
+May 14 11:02:01 localhost postfix/smtpd[416967]: connect from localhost[127.0.0.1]
+May 14 11:02:01 localhost postfix/smtpd[416967]: 612E61E0238: client=localhost[127.0.0.1]
+May 14 11:02:01 localhost postfix/cleanup[416972]: 612E61E0238: message-id=<20260514110201.416966@localhost>
+May 14 11:02:01 localhost postfix/qmgr[416285]: 612E61E0238: from=<admin@localhost>, size=467, nrcpt=1 (queue active)
+May 14 11:02:01 localhost postfix/smtpd[416967]: disconnect from localhost[127.0.0.1] ehlo=1 mail=1 rcpt=1 data=1 quit=1 commands=5
+May 14 11:02:01 localhost postfix/local[416973]: 612E61E0238: passing <test@localhost> to transport=lmtp
+May 14 11:02:01 localhost postfix/lmtp[416975]: 612E61E0238: to=<test@localhost>, relay=lfs.localdomain[private/dovecot-lmtp], delay=0.13, delays=0.07/0.01/0.03/0.01, dsn=2.0.0, status=sent (250 2.0.0 <test@localhost> JjRzHamrBWrQXAYA0J78UA Saved)
+May 14 11:02:01 localhost postfix/qmgr[416285]: 612E61E0238: removed
 
+# 深度解析这几行日志背后的含金量
+passing <test@localhost> to transport=lmtp: Postfix很聪明，它知道这个用户不是系统账户，而是虚拟用户，于是交给了Dovecot的lmtp进程
+relay=lfs.localdomain[private/dovecot-lmtp]: 这证明之前的10-master.conf里关于unix_listener的权限和路径配置全对了！Postfix成功写进了Dovecot的Socket
+status=sent (250 2.0.0 ... Saved): 这是 Dovecot 回复的。它已经根据你 users 文件里的路径 /var/vmail/test，把信件存进去了
+
+
+# 查看收信
+[root@lfs ~/build_mail]# ls -alh /var/vmail/test/mail/mailboxes/INBOX/dbox-Mails/
+total 20K
+drwx------ 2 vmail vmail 4.0K May 14 11:02 .
+drwx------ 3 vmail vmail 4.0K May 14 11:02 ..
+-rw------- 1 vmail vmail 1.1K May 14 11:02 dovecot.index.cache   
+-rw------- 1 vmail vmail  496 May 14 11:02 dovecot.index.log
+-rw------- 1 vmail vmail  752 May 14 11:02 u.1
+释义：
+权限对齐: 文件属主是 vmail:vmail，权限600。这说明10-mail.conf 和 10-master.conf 里的权限降权逻辑运行得非常完美
+dovecot.index.cache: 刚才投递时Dovecot已经自动为这封信建立了索引。这意味着之后你用手机或电脑连上来时，打开邮件的速度会极快，因为它不需要重新扫描整个u.1
+u.1: 这是sdbox的核心数据文件。那个 2 M1e C6a05aba9 是 Dovecot 的内部元数据头
+
+[root@lfs ~/build_mail]# grep -rn 'This is a test mailing' /var/vmail/test/mail/mailboxes/INBOX/dbox-Mails/
+/var/vmail/test/mail/mailboxes/INBOX/dbox-Mails/u.1:20:This is a test mailing
+[root@lfs ~/build_mail]# cat /var/vmail/test/mail/mailboxes/INBOX/dbox-Mails/u.1 
+2 M1e C6a05aba9
+N          000000000000028C
+Return-Path: <admin@localhost>
+Delivered-To: test@localhost
+Received: from lfs.localdomain
+	by localhost with LMTP
+	id JjRzHamrBWrQXAYA0J78UA
+	(envelope-from <admin@localhost>)
+	for <test@localhost>; Thu, 14 May 2026 11:02:01 +0000
+Received: from localhost (localhost [127.0.0.1])
+	by lfs.localdomain (Postfix) with ESMTP id 612E61E0238
+	for <test@localhost>; Thu, 14 May 2026 11:02:01 +0000 (UTC)
+Date: Thu, 14 May 2026 11:02:01 +0000
+To: test@localhost
+From: admin@localhost
+Subject: test Thu, 14 May 2026 11:02:01 +0000
+Message-Id: <20260514110201.416966@localhost>
+X-Mailer: swaks v20240103.0 jetmore.org/john/code/swaks/
+
+This is a test mailing
+
+
+
+
+R6a05aba9
+V2a0
+Gfa39051ea9ab056ad05c0600d09efc50
+
+[root@lfs ~/build_mail]# 
 
 
 
