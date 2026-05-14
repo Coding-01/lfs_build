@@ -380,7 +380,7 @@ Compression: Uncompressed, ZIP, ZLIB, BZIP2
 [root@lfs /sources/wget2-2.2.1/build]# ../configure --prefix=/usr  --sysconfdir=/etc  --with-openssl  --disable-static
 [root@lfs /sources/wget2-2.2.1/build]# make -j$(nproc) && make install
 [root@lfs /sources/wget2-2.2.1/build]# cd ../.. && rm -rf wget2-2.2.1
-
+[root@lfs /sources/wget2-2.2.1/build]# ln -sf /usr/bin/wget2 /usr/bin/wget
 
 # 安装pciutils
 [root@lfs /sources]# tar zxvf pciutils-3.15.0.tar.gz
