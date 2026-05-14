@@ -702,10 +702,6 @@ milter_protocol = 6
      Active: active (running) since Thu 2026-05-14 05:55:02 UTC; 8s ago
 
 
-
-
-
-
 ```
 
 
@@ -719,9 +715,65 @@ milter_protocol = 6
 
 
 
+## 三者如何联动
+```shell
+1、Postfix联动Rspamd：
+在/etc/postfix/main.cf 中添加 smtpd_milters = inet:localhost:11332。这是 Rspamd 监听的端口，所有进入的邮件都会先扔给Rspamd打分
+[root@lfs ~/build_mail]# vim /etc/postfix/main.cf
+# 告诉Postfix扫描器在哪
+smtpd_milters = inet:127.0.0.1:11332
+non_smtpd_milters = $smtpd_milters
+# 如果扫描器挂了，邮件依然通过(防止拒收正常邮件)
+milter_default_action = accept
+
+2、Dovecot联动Postfix,Postfix发信前需要验证用户身份，它直接借用Dovecot的验证机制
+在 Dovecot 配置里开启auth-service，让Postfix通过Dovecot的用户数据库来验证发信人身份
+[root@lfs ~/build_mail]# vim /etc/postfix/main.cf
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = private/auth
+smtpd_sasl_auth_enable = yes
+
+
+[root@lfs ~/build_mail]# mkdir /etc/dovecot/conf.d
+[root@lfs ~/build_mail]# vim /etc/dovecot/conf.d/10-master.conf
+# 开启 Unix Socket 让 Postfix 能连接
+unix_listener /var/spool/postfix/private/auth {
+    mode = 0660
+    user = postfix
+    group = postfix
+}
+
+最终投递: LMTP协议
+为了性能，Postfix不直接写硬盘，而是通过LMTP把信交给Dovecot存储
+[root@lfs ~/build_mail]# vim /etc/postfix/main.cf
+virtual_transport = lmtp:unix:private/dovecot-lmtp
 
 
 
+# 查看所有服务状态
+[root@lfs ~/build_mail]# for i in redis rspamd postfix dovecot;do systemctl  restart $i;done
+#[root@lfs ~/build_mail]# for i in redis rspamd postfix dovecot;do systemctl  status $i | grep Active;done
+[root@lfs ~/build_mail]# systemctl status dovecot
+× dovecot.service - Dovecot IMAP/POP3 email server
+     Loaded: loaded (/usr/lib/systemd/system/dovecot.service; enabled; preset: enabled)
+     Active: failed (Result: exit-code) since Thu 2026-05-14 06:18:59 UTC; 26s ago
+   Duration: 23min 56.278s
+ Invocation: b19a77b05ad44557b2c87c8b111d9859
+       Docs: man:dovecot(1)
+             https://doc.dovecot.org/
+    Process: 387774 ExecStart=/usr/sbin/dovecot -F (code=exited, status=89)
+   Main PID: 387774 (code=exited, status=89)
+   Mem peak: 4.6M
+        CPU: 35ms
+
+May 14 06:18:59 lfs systemd[1]: Starting Dovecot IMAP/POP3 email server...
+May 14 06:18:59 lfs dovecot[387774]: doveconf: Fatal: Error in configuration file /etc/dovecot/dovecot.conf: duplicate listener: /var/spool/postfix/private/auth
+May 14 06:18:59 lfs systemd[1]: dovecot.service: Main process exited, code=exited, status=89/n/a
+May 14 06:18:59 lfs systemd[1]: dovecot.service: Failed with result 'exit-code'.
+May 14 06:18:59 lfs systemd[1]: Failed to start Dovecot IMAP/POP3 email server.
+
+
+```
 
 
 
@@ -732,6 +784,9 @@ milter_protocol = 6
 ## Cloudflared：内网穿透网关
 ```shell
 cloudflared是用Go语言编写的。在lfs13中，你无法像CentOS那样直接yum install，你必须先安装Go编译器
+执行cloudflared tunnel create email-server它会给你一个ID
+在Cloudflare官网将你的域名(如 mail.yourdomain.com)指向这个隧道。这样外界的SMTP流量就会穿过隧道直接到达你的N100小主机
+
 
 # 假设你已经安装了 Go (go version >= 1.21)
 # 直接克隆源码编译最稳妥
@@ -746,48 +801,3 @@ cloudflared --version
 
 ```
 
-
-
-## 三者如何联动
-```shell
-1、Postfix联动Rspamd：
-在/etc/postfix/main.cf 中添加 smtpd_milters = inet:localhost:11332。这是 Rspamd 监听的端口，所有进入的邮件都会先扔给Rspamd打分
-vim /etc/postfix/main.cf
-# 告诉 Postfix 扫描器在哪
-smtpd_milters = inet:127.0.0.1:11332
-non_smtpd_milters = $smtpd_milters
-# 如果扫描器挂了，邮件依然通过（防止拒收正常邮件）
-milter_default_action = accept
-
-
-2、Dovecot联动Postfix,Postfix发信前需要验证用户身份，它直接借用Dovecot的验证机制
-在 Dovecot 配置里开启auth-service，让Postfix通过Dovecot的用户数据库来验证发信人身份
-vim /etc/postfix/main.cf
-smtpd_sasl_type = dovecot
-smtpd_sasl_path = private/auth
-smtpd_sasl_auth_enable = yes
-
-vim /etc/dovecot/conf.d/10-master.conf
-# 开启 Unix Socket 让 Postfix 能连接
-unix_listener /var/spool/postfix/private/auth {
-    mode = 0660
-    user = postfix
-    group = postfix
-}
-
-最终投递: LMTP协议
-为了性能，Postfix不直接写硬盘，而是通过LMTP把信交给Dovecot存储
-vim /etc/postfix/main.cf
-virtual_transport = lmtp:unix:private/dovecot-lmtp
-
-
-
-3、Cloudflared隧道
-执行cloudflared tunnel create email-server它会给你一个ID
-在Cloudflare官网将你的域名(如 mail.yourdomain.com)指向这个隧道。这样外界的SMTP流量就会穿过隧道直接到达你的N100小主机
-
-
-
-
-
-```
