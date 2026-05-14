@@ -24,6 +24,111 @@ OpenSSL (LFS内置) -> SQLite/MariaDB -> ICU -> Ragel -> Libusb (之前已做) -
 
 ## 安装部署
 ```shell
+# 先安装syslogd
+# ======================================================
+顺带安装了以下的包，你可以不安装 # === 中的部分
+libfastjson: 必须安装，否则编译报错
+libestr: 必须安装，用于字符串处理
+libuuid: 通常由 util-linux 提供
+
+# libuuid是已经安装好了的
+[root@lfs ~/build_mail]# find /usr/lib /lib -name "libuuid*"
+/usr/lib/libuuid.so.1.3.0
+/usr/lib/libuuid.so.1
+/usr/lib/libuuid.so
+[root@lfs ~/build_mail]# ldconfig -p | grep uuid
+	libuuid.so.1 (libc6,x86-64) => /usr/lib/libuuid.so.1
+	libuuid.so (libc6,x86-64) => /usr/lib/libuuid.so
+
+
+[root@lfs ~/build_mail]# wget2 https://github.com/troglobit/sysklogd/releases/download/v2.7.2/sysklogd-2.7.2.tar.gz
+[root@lfs ~/build_mail]# wget2 -O libestr_v0.1.11.tar.gz https://github.com/rsyslog/libestr/archive/refs/tags/v0.1.11.tar.gz
+[root@lfs ~/build_mail]# wget2 -O liblogging_v1.0.8.tar.gz https://github.com/rsyslog/liblogging/archive/refs/tags/v1.0.8.tar.gz
+
+[root@lfs ~/build_mail]# tar zxvf libfastjson_v1.2304.0.tar.gz
+[root@lfs ~/build_mail]# cd libfastjson-1.2304.0/
+[root@lfs ~/build_mail/libfastjson-1.2304.0]# sh autogen.sh
+[root@lfs ~/build_mail/libfastjson-1.2304.0]# ./configure --prefix=/usr --disable-static && make -j$(nproc) && make install
+[root@lfs ~/build_mail/libfastjson-1.2304.0]# cd .. && rm -rf libfastjson-1.2304.0
+
+[root@lfs ~/build_mail]# tar -zxvf libestr_v0.1.11.tar.gz
+[root@lfs ~/build_mail]# cd libestr-0.1.11/
+[root@lfs ~/build_mail/libestr-0.1.11]# sh autogen.sh && ./configure --prefix=/usr --disable-static && make -j$(nproc) && make install
+[root@lfs ~/build_mail/libestr-0.1.11]# cd .. && rm -rf libestr-0.1.11
+
+[root@lfs ~/build_mail]# tar zxvf liblogging_v1.0.8.tar.gz
+[root@lfs ~/build_mail]# cd liblogging-1.0.8/
+[root@lfs ~/build_mail/liblogging-1.0.8]# sh autogen.sh --disable-man-pages && ./configure --prefix=/usr --disable-journal --disable-man-pages && make -j$(nproc) && make install
+[root@lfs ~/build_mail/liblogging-1.0.8]# cd ..
+
+[root@lfs ~/build_mail]# ldconfig
+
+[root@lfs ~/build_mail]# tar zxvf sysklogd-2.7.2.tar.gz
+[root@lfs ~/build_mail]# cd sysklogd-2.7.2
+[root@lfs ~/build_mail/sysklogd-2.7.2]# ./configure --prefix=/usr --sysconfdir=/etc && make && make install
+[root@lfs ~/build_mail/sysklogd-2.7.2]# cd .. && rm -rf sysklogd-2.7.2
+把sysklogd做成服务
+[root@lfs ~/build_mail]# cat > /usr/lib/systemd/system/sysklogd.service << "EOF"
+[Unit]
+Description=System and Kernel Logging Service
+Documentation=man:sysklogd(8)
+After=network.target
+
+[Service]
+Type=forking
+# -n 避免后台运行以便 systemd 跟踪（取决于版本，建议先用默认）
+ExecStart=/usr/sbin/syslogd
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+
+[root@lfs ~/build_mail]# systemctl daemon-reload
+[root@lfs ~/build_mail]# mkdir -p /etc/syslog.d
+[root@lfs ~/build_mail]# cat > /etc/syslog.conf << "EOF"
+# 记录邮件日志
+mail.* /var/log/maillog
+
+# 记录系统消息
+*.info;mail.none;authpriv.none          /var/log/messages
+
+# 记录认证信息
+authpriv.* /var/log/auth.log
+
+# 记录紧急信息
+*.emerg                                 *
+EOF
+
+[root@lfs ~/build_mail]# systemctl enable sysklogd && systemctl restart sysklogd
+[root@lfs ~/build_mail]# systemctl status sysklogd
+● sysklogd.service - System and Kernel Logging Service
+     Loaded: loaded (/usr/lib/systemd/system/sysklogd.service; enabled; preset: enabled)
+     Active: active (running) since Thu 2026-05-14 08:28:58 UTC; 1min 9s ago
+ Invocation: e28defae51314cb7931f0990391d61cf
+       Docs: man:sysklogd(8)
+    Process: 415753 ExecStart=/usr/sbin/syslogd (code=exited, status=0/SUCCESS)
+   Main PID: 415754 (syslogd)
+      Tasks: 1 (limit: 19179)
+     Memory: 1M (peak: 2M)
+        CPU: 181ms
+     CGroup: /system.slice/sysklogd.service
+             └─415754 /usr/sbin/syslogd
+
+May 14 08:28:58 lfs systemd[1]: Starting System and Kernel Logging Service...
+May 14 08:28:58 lfs systemd[1]: Started System and Kernel Logging Service.
+
+# 人为制造一点日志，看看文件会不会动
+[root@lfs ~/build_mail]# ls -l /var/log/maillog
+-rw-r--r-- 1 root root 0 May 14 08:27 /var/log/maillog
+[root@lfs ~/build_mail]# logger -p mail.info "Testing maillog for LFS测试项目"
+[root@lfs ~/build_mail]# ls -l /var/log/maillog
+-rw-r--r-- 1 root root 80 May 14 08:30 /var/log/maillog
+
+
+
+
 # Postfix3.11.2：发信核心
 Postfix依赖Cyrus-SASL来进行用户认证. 所以需要lfs13先安装cyrus-sasl
 [root@lfs ~]# mkdir build_mail && cd build_mail
@@ -59,10 +164,16 @@ useradd warning: postfix's uid 32 outside of the UID_MIN 1000 and UID_MAX 60000 
             -DHAS_SSL -I/usr/include/openssl \
             -DHAS_SQLITE -I/usr/include \
             -DHAS_LMDB -I/usr/include \
-            -DNO_DB" \
-    AUXLIBS="-lssl -lcrypto -lsqlite3 -llmdb -lpthread" \
+            -DNO_DB \
+            -DUSE_SASL_AUTH -DUSE_CYRUS_SASL -I/usr/include/sasl" \
+    AUXLIBS="-lssl -lcrypto -lsqlite3 -llmdb -lpthread -lsasl2" \
     default_database_type=lmdb \
     default_cache_db_type=lmdb
+参数释义:
+-DUSE_SASL_AUTH: 告诉 Postfix "你要支持认证功能"
+-DUSE_CYRUS_SASL: 告诉Postfix"我们要使用Cyrus-SASL 这个插件框架"(即便你后端用 Dovecot，Postfix 内部也是通过 Cyrus 框架去调用的)
+-I/usr/include/sasl: 告诉编译器去哪找sasl.h 头文件(在lfs13中通常在这里)
+-lsasl2: 最关键的一步。告诉链接器把libsasl2.so 编进 Postfix 程序里。没有它，你依然会看到 SASL support is not compiled in 的警
 
 [root@lfs ~/build_mail/postfix-3.11.2]# make -j$(nproc)
 # 如果是第一次在lfs13中安装Postfix，或者你想重新配置所有路径,我是第一次安装所以执行该命令
@@ -76,6 +187,29 @@ mail_version = 3.11.2
 
 [root@lfs ~/build_mail/postfix-3.11.2]# cd ..
 
+
+
+# 显式禁用NIS
+[root@lfs ~/build_mail/postfix-3.11.2]# vim /etc/postfix/main.cf
+mydestination = $myhostname, localhost.$mydomain, localhost         # 一会儿本地测试时要用
+设置邮件存储位置(Maildir 格式)
+home_mailbox = Maildir/
+alias_maps = lmdb:/etc/aliases
+alias_database = lmdb:/etc/aliases
+local_recipient_maps = proxy:unix:passwd.byname $alias_maps
+强制使用LMTP投递
+mailbox_transport = lmtp:unix:private/dovecot-lmtp
+
+
+创建一个真实的系统用户测试(最快方案)
+[root@lfs ~/build_mail/postfix-3.11.2]# useradd -m -s /bin/false test && chown -R test:test /home/test
+
+数据库缺失: 别名表未初始化
+# 创建空的别名文件（如果不存在）
+[root@lfs ~/build_mail]# [ ! -f /etc/aliases ] && touch /etc/aliases
+
+# 生成lmdb格式的数据库文件 (postfix 3.x 默认使用 lmdb), 同样也是更新别名数据库
+[root@lfs ~/build_mail]# newaliases
 
 # 把postfix做成服务
 [root@lfs ~/build_mail]# vim /usr/lib/systemd/system/postfix.service
@@ -199,6 +333,13 @@ chmod 700 /srv/mail
 openssl req -new -x509 -nodes -out /etc/dovecot/ssl-cert.pem -keyout /etc/dovecot/ssl-key.pem -days 365
 按需填写,实际中的证书都有这些信息
 
+# 修改dovecot.conf启用协议
+protocols {
+  imap = yes
+  lmtp = yes     # 确保这一项在
+  pop3 = yes     # 该项如现在不需要可注释掉
+}
+
 
 # 检查配置语法
 [root@lfs ~/build_mail]# dovecot -n
@@ -215,6 +356,7 @@ mail_uid = vmail
 protocols {
   imap = yes
   lmtp = yes
+  pop3 = yes
 }
 namespace inbox {
   inbox = yes
@@ -255,6 +397,7 @@ May 14 05:48:40 lfs systemd[1]: Started Dovecot IMAP/POP3 email server.
 
 # 如需排错
 journalctl -u dovecot -f
+
 
 
 ```
@@ -681,7 +824,7 @@ bind_socket = "localhost:11332";
 
 2. 配置Postfix
 [root@lfs ~/build_mail/redis-8.6.3]# vim /etc/postfix/main.cf            # 在最后面追加以下内容
-# Milter配置
+# 开启Rspamd联动(Milter配置)
 smtpd_milters = inet:localhost:11332
 non_smtpd_milters = $smtpd_milters
 
@@ -744,6 +887,47 @@ service auth {
     group = postfix
   }
 }
+service auth {
+  # 供postfix认证使用
+  unix_listener /var/spool/postfix/private/auth {
+    mode = 0660
+    user = postfix
+    group = postfix
+  }
+
+  # 供Dovecot内部进程也能互相通信
+  unix_listener auth-userdb {
+    mode = 0660
+    user = dovecot    # 如果没有 vmail，先用 dovecot
+    group = dovecot
+  }
+}
+# --- LMTP监听窗口 ---
+service lmtp {
+  unix_listener /var/spool/postfix/private/dovecot-lmtp {
+    mode = 0660
+    user = postfix           # 务必确保user 和 group 与 Postfix 进程匹配
+    group = postfix
+  }
+}
+
+
+[root@lfs ~/build_mail]# vim /etc/dovecot/conf.d/10-auth.conf
+# 允许 Dovecot 读取系统账号 (UserDB)
+userdb passwd {
+  driver = passwd
+  args = 
+}
+
+# 允许 Dovecot 验证系统密码 (PassDB)
+passdb pam {
+  driver = pam
+}
+
+# 剥离域名，只取用户名 'test' 去系统里查
+auth_username_format = %n
+
+
 
 最终投递: LMTP协议
 为了性能，Postfix不直接写硬盘，而是通过LMTP把信交给Dovecot存储
@@ -761,6 +945,108 @@ virtual_transport = lmtp:unix:private/dovecot-lmtp
      Active: active (running) since Thu 2026-05-14 06:26:22 UTC; 24s ago
 
 
+# 查看管道文件是否存在, 该文件是 Postfix 和 Dovecot 通讯的"生命线"
+[root@lfs ~/build_mail]# ls -al /var/spool/postfix/private/dovecot-lmtp 
+srw-rw---- 1 postfix postfix 0 May 14 08:59 /var/spool/postfix/private/dovecot-lmtp
+
+
+
+```
+
+
+
+
+
+
+# 全链路冒烟测试
+```shell
+测试1：本地收发流
+在 LFS 命令行使用 mail 或 swaks 工具，尝试给 root@localhost 发信
+目的: 验证Postfix能不能把信交给 Dovecot 存入 /var/mail
+
+第一阶段：发信链路测试 (Submission & MTA)
+验证 Postfix 是否能接收请求，并成功通过 Dovecot 的身份验证
+使用swaks工具(lfs必备的邮件瑞士军刀):
+[root@lfs ~/build_mail]# wget2 https://www.jetmore.org/john/code/swaks/files/swaks-20240103.0.tar.gz
+[root@lfs ~/build_mail]# tar zxvf swaks-20240103.0.tar.gz
+[root@lfs ~/build_mail]# cd swaks-20240103.0
+[root@lfs ~/build_mail/swaks-20240103.0]# cp swaks /usr/bin/
+[root@lfs ~/build_mail/swaks-20240103.0]# chmod +x /usr/bin/swaks
+[root@lfs ~/build_mail/swaks-20240103.0]# swaks --version
+swaks version 20240103.0
+
+[root@lfs ~/build_mail/swaks-20240103.0]# cd ..
+
+新开一个窗口监控着日志
+[root@lfs ~]# tail -f /var/log/maillog
+
+[root@lfs ~/build_mail]# swaks --to test@localhost --from admin@localhost --server localhost --port 25
+=== Trying localhost:25...
+=== Connected to localhost.
+<-  220 lfs.localdomain ESMTP Postfix
+ -> EHLO localhost
+<-  250-lfs.localdomain
+<-  250-PIPELINING
+<-  250-SIZE 10240000
+<-  250-VRFY
+<-  250-ETRN
+<-  250-AUTH PLAIN
+<-  250-ENHANCEDSTATUSCODES
+<-  250-8BITMIME
+<-  250-DSN
+<-  250-SMTPUTF8
+<-  250 CHUNKING
+ -> MAIL FROM:<admin@localhost>
+<-  250 2.1.0 Ok
+ -> RCPT TO:<test@localhost>
+<-  250 2.1.5 Ok
+ -> DATA
+<-  354 End data with <CR><LF>.<CR><LF>
+ -> Date: Thu, 14 May 2026 08:42:23 +0000
+ -> To: test@localhost
+ -> From: admin@localhost
+ -> Subject: test Thu, 14 May 2026 08:42:23 +0000
+ -> Message-Id: <20260514084223.415817@localhost>
+ -> X-Mailer: swaks v20240103.0 jetmore.org/john/code/swaks/
+ -> 
+ -> This is a test mailing
+ -> 
+ -> 
+ -> .
+<-  250 2.0.0 Ok: queued as 32C661E0238
+ -> QUIT
+<-  221 2.0.0 Bye
+=== Connection closed with remote host.
+
+
+日志中显示
+[root@lfs ~]# tail -f /var/log/maillog
+May 14 08:42:23 localhost postfix/smtpd[415818]: connect from localhost[127.0.0.1]
+May 14 08:42:23 localhost postfix/smtpd[415818]: 32C661E0238: client=localhost[127.0.0.1]
+May 14 08:42:23 localhost postfix/cleanup[415822]: 32C661E0238: message-id=<20260514084223.415817@localhost>
+May 14 08:42:23 localhost postfix/smtpd[415818]: disconnect from localhost[127.0.0.1] ehlo=1 mail=1 rcpt=1 data=1 quit=1 commands=5
+May 14 08:42:23 localhost postfix/local[415823]: 32C661E0238: to=<test@localhost>, relay=local, delay=0.18, delays=0.17/0.01/0/0, dsn=2.0.0, status=sent (delivered to mailbox)
+
+
+
+
+
+测试2：安检审计流
+检查 /var/log/maillog 或 journalctl -u rspamd
+目的: 确认邮件经过时，Rspamd有没有跳出来打分
+
+
+
+
+
+
+
+
+
+
+
+
+
 ```
 
 
@@ -769,12 +1055,7 @@ virtual_transport = lmtp:unix:private/dovecot-lmtp
 
 
 
-
-
-
-
-
-
+# 打通互联网
 ## Cloudflared：内网穿透网关
 ```shell
 cloudflared是用Go语言编写的。在lfs13中，你无法像CentOS那样直接yum install，你必须先安装Go编译器
