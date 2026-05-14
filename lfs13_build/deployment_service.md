@@ -737,10 +737,12 @@ smtpd_sasl_auth_enable = yes
 [root@lfs ~/build_mail]# mkdir /etc/dovecot/conf.d
 [root@lfs ~/build_mail]# vim /etc/dovecot/conf.d/10-master.conf
 # 开启 Unix Socket 让 Postfix 能连接
-unix_listener /var/spool/postfix/private/auth {
+service auth {
+  unix_listener /var/spool/postfix/private/auth {
     mode = 0660
     user = postfix
     group = postfix
+  }
 }
 
 最终投递: LMTP协议
@@ -752,25 +754,11 @@ virtual_transport = lmtp:unix:private/dovecot-lmtp
 
 # 查看所有服务状态
 [root@lfs ~/build_mail]# for i in redis rspamd postfix dovecot;do systemctl  restart $i;done
-#[root@lfs ~/build_mail]# for i in redis rspamd postfix dovecot;do systemctl  status $i | grep Active;done
-[root@lfs ~/build_mail]# systemctl status dovecot
-× dovecot.service - Dovecot IMAP/POP3 email server
-     Loaded: loaded (/usr/lib/systemd/system/dovecot.service; enabled; preset: enabled)
-     Active: failed (Result: exit-code) since Thu 2026-05-14 06:18:59 UTC; 26s ago
-   Duration: 23min 56.278s
- Invocation: b19a77b05ad44557b2c87c8b111d9859
-       Docs: man:dovecot(1)
-             https://doc.dovecot.org/
-    Process: 387774 ExecStart=/usr/sbin/dovecot -F (code=exited, status=89)
-   Main PID: 387774 (code=exited, status=89)
-   Mem peak: 4.6M
-        CPU: 35ms
-
-May 14 06:18:59 lfs systemd[1]: Starting Dovecot IMAP/POP3 email server...
-May 14 06:18:59 lfs dovecot[387774]: doveconf: Fatal: Error in configuration file /etc/dovecot/dovecot.conf: duplicate listener: /var/spool/postfix/private/auth
-May 14 06:18:59 lfs systemd[1]: dovecot.service: Main process exited, code=exited, status=89/n/a
-May 14 06:18:59 lfs systemd[1]: dovecot.service: Failed with result 'exit-code'.
-May 14 06:18:59 lfs systemd[1]: Failed to start Dovecot IMAP/POP3 email server.
+[root@lfs ~/build_mail]# for i in redis rspamd postfix dovecot;do systemctl  status $i | grep Active;done
+     Active: active (running) since Thu 2026-05-14 06:26:20 UTC; 26s ago
+     Active: active (running) since Thu 2026-05-14 06:26:21 UTC; 25s ago
+     Active: active (running) since Thu 2026-05-14 06:26:22 UTC; 24s ago
+     Active: active (running) since Thu 2026-05-14 06:26:22 UTC; 24s ago
 
 
 ```
