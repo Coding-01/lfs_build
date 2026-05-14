@@ -838,6 +838,17 @@ milter_default_action = accept
 milter_protocol = 6
 
 
+# 设置postfix和Rspamd联动
+[root@lfs ~/build_mail]# vim /etc/postfix/master.cf
+smtp      inet  n       -       n       -       -       smtpd
+  -o smtpd_milters=inet:127.0.0.1:11332
+注意：这里有个隐蔽的坑，所有的-o参数必须缩进(前面留空格,本次我留了2个)，否则会被Postfix认为是一行新的服务定义，从而直接忽略
+
+
+
+
+
+
 
 # 查看所有服务状态
 [root@lfs ~/build_mail]# for i in redis rspamd postfix dovecot;do systemctl  restart $i;done
@@ -964,6 +975,7 @@ user	test
 uid	5000
 gid	5000
 home	/var/vmail/test
+
 
 
 
@@ -1120,6 +1132,44 @@ V2a0
 Gfa39051ea9ab056ad05c0600d09efc50
 
 [root@lfs ~/build_mail]# 
+
+
+
+
+# 发一封GTUBE测试码(垃圾邮件万能钥匙)
+GTUBE 是一串特殊的字符串，所有的反垃圾引擎（Rspamd, SpamAssassin）只要看到它，就一定会把它标记为垃圾邮件(1000分)
+[root@lfs ~/build_mail]# swaks --to test@localhost --from admin@localhost --server localhost --port 25 \
+--body "XJS*C4JDBQO6UT65VN6P47WA61N79IKUALT2VQTEU40TVPQ9DHS0HUEQBS#G6L3#T5"
+注意：
+本地不触发Rspamd，这只是Postfix针对Loopback接口的保护逻辑，不代表系统在公网防御有问题,要测试Rspamd是否在工作:
+[root@lfs ~/build_mail]# echo "XJS*C4JDBQO6UT65VN6P47WA61N79IKUALT2VQTEU40TVPQ9DHS0HUEQBS#G6L3#T5" | rspamc
+Results for file: stdin (0.105 seconds)
+[Metric: default]
+Action: reject
+Spam: true
+Score: 17.40 / 15.00
+Symbol: ARC_NA (0.00)
+Symbol: DMARC_NA (0.00)[No From header]
+Symbol: HFILTER_HOSTNAME_UNKNOWN (2.50)
+Symbol: MIME_GOOD (-0.10)[text/plain]
+Symbol: MIME_TRACE (0.00)[0:+]
+Symbol: MISSING_DATE (1.00)
+Symbol: MISSING_ESSENTIAL_HEADERS (7.00)
+Symbol: MISSING_FROM (2.00)
+Symbol: MISSING_MID (2.50)
+Symbol: MISSING_SUBJECT (0.50)
+Symbol: MISSING_TO (2.00)
+Symbol: MISSING_XM_UA (0.00)
+Symbol: RCVD_COUNT_ZERO (0.00)[0]
+Symbol: R_DKIM_NA (0.00)
+Symbol: R_MISSING_CHARSET (0.00)
+Message-ID: undef
+
+
+
+
+
+
 
 
 
