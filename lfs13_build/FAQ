@@ -1,4 +1,5 @@
-问题：哪里都没问题，就是启动postfix一直报错该怎么办
+# 问题：哪里都没问题，就是启动postfix一直报错该怎么办
+```shell
 [root@lfs ~/build_mail]# systemctl status postfix
 × postfix.service - Postfix Mail Transport Agent
      Loaded: loaded (/usr/lib/systemd/system/postfix.service; enabled; preset: enabled)
@@ -28,3 +29,9 @@ rm -f /var/spool/postfix/pid/master.pid
 
 # 再次重置 systemd 状态
 systemctl reset-failed postfix
+
+```
+
+
+
+

@@ -1,4 +1,4 @@
-# 部署postfix+Dovecot+Rspamd
+# 部署postfix+Dovecot+Rspamd+DKIM+SPF+DMARC
 ## 前奏
 ```shell
 # 在lfs13中先安装postfix+Dovecot+Rspamd和cloudflared客户端
@@ -15,8 +15,24 @@ https://github.com/rspamd/rspamd/archive/refs/tags/4.0.1.tar.gz
 
 要在lfs13上手动构建这套"企业级邮件底座"，对源码编译的顺序和依赖处理有极高的要求
 核心预警：编译顺序
-在 LFS 中，你必须先解决加密与验证库。编译顺序必须是：
+在lfs中必须先解决加密与验证库。编译顺序必须是：
 OpenSSL (LFS内置) -> SQLite/MariaDB -> ICU -> Ragel -> Libusb (之前已做) -> Postfix -> Dovecot -> Rspamd
+
+
+
+DKIM (DomainKeys Identified Mail):
+任务: 在lfs上使用 rspamadm dkim_keygen 生成密钥对。私钥留在Rspamd里进行签名(Signing),公钥以TXT记录形式发布到DNS。这是证明"这封信确实是我发的"唯一证据
+
+SPF (Sender Policy Framework):
+任务: 在 DNS 设置 TXT 记录，声明只有你的 LFS IP 有权代表你的域名发信
+
+DMARC:
+任务: 告诉对方服务器：如果 SPF 或 DKIM 校验失败了，是该直接丢弃还是隔离？
+
+
+
+
+
 
 ```
 
@@ -1170,6 +1186,21 @@ Message-ID: undef
 
 
 
+# 前的测试很多是在25端口明文跑的
+TLS证书集成：
+    任务: 编译或安装 Certbot，获取 Let's Encrypt 的正式证书。
+    配置: 在 Postfix 和 Dovecot 中配置 smtpd_tls_cert_file 等参数，开启 STARTTLS。
+
+端口安全：
+    任务: 开启 465 (SMTPS) 和 993 (IMAPS)。在现代互联网中，直接暴露明文端口是非常危险的
+
+
+
+自建邮件系统最痛苦的不是搭建，而是运维
+日志分析与可视化：
+    任务: 安装 Pflogsumm(生成 Postfix 每日统计报告)或使用 ELK/Prometheus 监控 Rspamd 的扫描效率
+黑名单监控：
+    任务: 编写脚本或定期访问 mxtoolbox，检查你的IP是否因为被发垃圾邮件而列入了RBL黑名单
 
 
 
